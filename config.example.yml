@@ -1,0 +1,72 @@
+## Millwright configuration — copy this to config.yml and fill in your values.
+## config.yml is gitignored so your secrets stay local.
+## New here? Run the `setup-millwright` skill to fill this in interactively, then
+## check it with `bin/doctor`. See the Setup section of the README.
+
+# Your GitHub username or org that owns the repos Millwright works on.
+owner: "<your-github-username>"
+
+# The GitHub Project (v2) board Millwright reads/writes.
+# Create one at https://github.com/users/<you>/projects and fill in the number + node id.
+project_number: 1
+project_id: "<your-project-node-id>"   # GitHub Project node ID (e.g. PVT_kw...)
+
+# Concurrency knobs.
+max_workers: 3       # max concurrent coding-agent workers
+max_in_review: 5     # max issues sitting in the "In review" column before Millwright pauses pickups
+
+# How long to keep daily log dirs and state/ marker files.
+retention_days: 7
+
+# The username your GitHub App posts as. Appears in PR/issue authorship checks.
+factory_username: "millwright-bot[bot]"
+
+# Slack incoming-webhook URL. Can also be supplied via SLACK_WEBHOOK env var,
+# which takes precedence over this value.
+slack_webhook: "<your-slack-webhook-url>"
+
+# GitHub App credentials. Create an app at https://github.com/settings/apps with
+# permissions: contents (R/W), issues (R/W), pull requests (R/W), metadata (R).
+# Install it on the repo(s) you want Millwright to manage.
+github_app:
+  app_id: 0                              # numeric App ID from the GitHub App settings page
+  installation_id: 0                     # numeric Installation ID after installing on your account/org
+  bot_user_id: 0                         # numeric user ID of the [bot] account (gh api /users/<bot>[bot] → id)
+  private_key_path: "./private-key.pem"  # path to the .pem you downloaded. Gitignored by default.
+
+# Pluggable adapters. Defaults below match the only implementations shipped today;
+# swap in your own by following docs/adapters.md.
+adapters:
+  issue_tracker: github_projects
+  version_control: github
+  update_channel: slack
+  coding_agent: claude_code
+
+# Claude Code coding-agent adapter settings.
+coding_agent:
+  # Start every spawned worker session with Remote Control enabled.
+  # true (default) → pass --remote-control | false → omit it |
+  # "session-name" → pass --remote-control <name>.
+  remote_control: true
+
+# Optional: configure individual routines.
+routines:
+  security_scan:
+    # Where to clone/find repos for scanning. Defaults to the directory containing
+    # the Millwright checkout's parent (i.e. the dir Millwright lives in).
+    workspace_dir: "<absolute-path-to-your-workspace-dir>"
+    repos:
+      - name: <your-owner>/<your-repo>
+        dir: <absolute-path-to-checkout>
+  weekly_digest:
+    # Repo to summarise merged PRs from.
+    repo: <your-owner>/<your-repo>
+
+# Names of the columns on your GitHub Project board. Must match exactly (case-sensitive).
+statuses:
+  ready: "Ready"
+  planning: "cc-planning"
+  planning_approved: "Planning approved"
+  building: "In progress"
+  pr: "In review"
+  done: "Done"

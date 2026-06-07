@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+LOG_DIR="logs/$(date -u +%Y-%m-%d)"
+mkdir -p "$LOG_DIR"
+exec bundle exec ruby lib/routines/security_scan.rb >> "$LOG_DIR/security-scan.log" 2>&1

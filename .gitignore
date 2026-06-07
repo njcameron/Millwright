@@ -1,0 +1,9 @@
+config.yml
+private-key.pem
+state/*
+!state/.gitkeep
+logs/*
+!logs/.gitkeep
+.bundle/
+vendor/
+lib/logs/

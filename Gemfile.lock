@@ -1,0 +1,19 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    drb (2.2.3)
+    minitest (6.0.2)
+      drb (~> 2.0)
+      prism (~> 1.5)
+    prism (1.9.0)
+    rake (13.3.1)
+
+PLATFORMS
+  x86_64-linux-gnu
+
+DEPENDENCIES
+  minitest
+  rake
+
+BUNDLED WITH
+   2.4.20
