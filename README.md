@@ -31,13 +31,13 @@ A cron-driven orchestrator that works off a project board (e.g. a GitHub Project
 
 ## Principles
 
-<img width="900" height="1125" alt="Millwright principles" src="https://github.com/user-attachments/assets/9307d20e-5ec9-47c7-8f7b-7b88ec914926" />
-
 1. **Works independently of individual developers.** Millwright is a shared resource for your team or organisation that works autonomously to deliver completed work across multiple projects. Anybody can create a ticket for it to pick up; it delivers the completed work, which any team member can then review and merge.
 
 2. **Uses the tools you already use.** It runs off your existing issue tracker and uses your existing version control and notification channels. It defaults to GitHub, Slack, but is fully extensible to other channels and tools.
 
 3. **Runs on infrastructure you own.** Millwright is intended to run on a VPS: private cloud, public cloud, or a provider like Hetzner — so the work happens on hardware you control.
+
+<img height="450" alt="Millwright principles" src="/docs/Engagement Matrix.png" />
 
 ## How it works
 
