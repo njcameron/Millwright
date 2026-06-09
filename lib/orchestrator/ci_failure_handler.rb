@@ -75,7 +75,11 @@ class Orchestrator
       log_file = @ctx.worker_runner.daily_log_path("ci-fix-#{pr_number}.log")
 
       unless Dir.exist?(repo_dir)
-        @ctx.log "PR ##{pr_number}: repo directory not found: #{repo_dir}, skipping"
+        @ctx.error(
+          "PR ##{pr_number}: repo checkout not found at #{repo_dir}, skipping",
+          key: "repo_missing_#{repo_name}",
+          fields: { "Repo" => repo, "PR" => "##{pr_number}" }
+        )
         return
       end
 

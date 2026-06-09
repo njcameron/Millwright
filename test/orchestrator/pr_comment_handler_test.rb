@@ -137,4 +137,27 @@ class PrCommentHandlerTest < Minitest::Test
     result = @handler.find_unaddressed_comments("user/repo", 10, "test-bot[bot]")
     assert_empty result
   end
+
+  # Regression: when the local repo checkout is missing, the orchestrator used
+  # to only log "repo directory not found" and silently re-detect the same
+  # comment every tick. It must now surface the failure to the update channel.
+  def test_missing_checkout_surfaces_error_notification
+    channel = RecordingUpdateChannel.new
+    ctx = build_context(@tmpdir, update_channel: channel)
+    repo = "user/definitely-not-a-real-checkout"
+    ctx.issue_tracker.items = [
+      { number: 7, status: "In review", type: "ISSUE", repo: repo }
+    ]
+    ctx.vcs.prs[[repo, 7]] = { number: 42, branch: "feature" }
+    ctx.vcs.issue_comments = [
+      { id: 10, author: "human", body: "do x", type: :issue }
+    ]
+    handler = Orchestrator::PrCommentHandler.new(ctx)
+
+    capture_io { handler.call(1) }
+
+    assert_equal 1, channel.errors.size
+    assert_match(/repo checkout not found/, channel.errors[0][:message])
+    assert_equal repo, channel.errors[0][:fields]["Repo"]
+  end
 end

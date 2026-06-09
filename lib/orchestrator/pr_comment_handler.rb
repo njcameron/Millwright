@@ -104,7 +104,12 @@ class Orchestrator
       return if issue_comments.empty?
       @ctx.vcs.post_pr_comment(repo, pr_number, wip)
     rescue => e
-      @ctx.log "Warning: failed to post WIP replies: #{e.message}"
+      @ctx.error(
+        "PR ##{pr_number}: failed to post WIP reply",
+        key: "wip_reply_failed_#{repo}",
+        detail: e.message,
+        fields: { "Repo" => repo, "PR" => "##{pr_number}" }
+      )
     end
 
     def dispatch_pr_review(issue, repo, pr_number, pr_branch, comments)
@@ -114,7 +119,11 @@ class Orchestrator
       log_file = @ctx.worker_runner.daily_log_path("pr-#{pr_number}.log")
 
       unless Dir.exist?(repo_dir)
-        @ctx.log "PR ##{pr_number}: repo directory not found: #{repo_dir}, skipping"
+        @ctx.error(
+          "PR ##{pr_number}: repo checkout not found at #{repo_dir}, skipping",
+          key: "repo_missing_#{repo_name}",
+          fields: { "Repo" => repo, "PR" => "##{pr_number}" }
+        )
         return
       end
 

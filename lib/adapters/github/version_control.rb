@@ -79,7 +79,7 @@ module Adapters
 
       def post_review_reply(repo, pr_number, comment_id, body)
         env = { "GH_TOKEN" => worker_token }
-        Open3.capture2(
+        run_gh!(
           env,
           "gh", "api", "repos/#{repo}/pulls/#{pr_number}/comments",
           "-f", "body=#{body}", "-F", "in_reply_to=#{comment_id}"
@@ -88,7 +88,7 @@ module Adapters
 
       def post_pr_comment(repo, pr_number, body)
         env = { "GH_TOKEN" => worker_token }
-        Open3.capture2(
+        run_gh!(
           env,
           "gh", "pr", "comment", pr_number.to_s, "-R", repo, "--body", body
         )
@@ -163,6 +163,20 @@ module Adapters
 
       def worker_token
         @app_token ? @app_token.generate : ENV["GH_TOKEN"].to_s
+      end
+
+      # Runs a `gh` command, capturing stderr, and raises on non-zero exit so
+      # callers can surface the failure instead of it being silently swallowed
+      # (capture2 dropped stderr + ignored status, letting e.g. a 403
+      # "Resource not accessible by integration" leak to the process stderr and
+      # look like success). The raised message carries gh's stderr.
+      def run_gh!(env, *cmd)
+        stdout, stderr, status = Open3.capture3(env, *cmd)
+        unless status.success?
+          detail = stderr.strip.empty? ? stdout.strip : stderr.strip
+          raise "gh #{cmd[1]} failed (exit #{status.exitstatus}): #{detail}"
+        end
+        stdout
       end
     end
   end

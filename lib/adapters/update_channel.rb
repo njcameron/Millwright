@@ -52,6 +52,13 @@ module Adapters
       raise NotImplementedError
     end
 
+    # Operational/infrastructure error surfaced to humans (a missing repo
+    # checkout, a failed GitHub API call, ...). Distinct from worker_failed,
+    # which reports a coding-agent run failing. Must never raise.
+    def error(message, detail: nil, fields: {})
+      raise NotImplementedError
+    end
+
     # Returns the Prompts object for this adapter (send_message fragment, ...).
     def prompts
       raise NotImplementedError

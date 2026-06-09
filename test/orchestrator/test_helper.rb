@@ -125,13 +125,27 @@ class StubUpdateChannel
 end
 StubNotifier = StubUpdateChannel
 
+# Records error() notifications so tests can assert what was surfaced to the
+# channel. All other events fall through to the no-op method_missing.
+class RecordingUpdateChannel < StubUpdateChannel
+  attr_reader :errors
+
+  def initialize
+    @errors = []
+  end
+
+  def error(message, detail: nil, fields: {})
+    @errors << { message: message, detail: detail, fields: fields }
+  end
+end
+
 module OrchestratorTestHelper
-  def build_context(tmpdir, dry_run: false)
+  def build_context(tmpdir, dry_run: false, update_channel: StubUpdateChannel.new)
     Orchestrator::Context.new(
       config: TEST_CONFIG.dup,
       issue_tracker: StubIssueTracker.new,
       vcs: StubVersionControl.new,
-      update_channel: StubUpdateChannel.new,
+      update_channel: update_channel,
       dry_run: dry_run,
       state_dir: File.join(tmpdir, "state"),
       logs_dir: File.join(tmpdir, "logs")

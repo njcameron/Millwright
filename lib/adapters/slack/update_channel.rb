@@ -144,6 +144,16 @@ module Adapters
         )
       end
 
+      # Operational error (missing checkout, failed gh call, ...). `post`
+      # already swallows send failures, so this never raises.
+      def error(message, detail: nil, fields: {})
+        all_fields = fields.dup
+        unless detail.to_s.empty?
+          all_fields["Detail"] = "`#{detail.to_s[0..400]}`"
+        end
+        post(text: "⚠️ *Millwright error* — #{message}", fields: all_fields)
+      end
+
       # Posts a single innocuous message and returns the Net::HTTPResponse.
       # Unlike the event methods above, this deliberately does NOT swallow
       # errors — `bin/doctor` needs to see the real outcome (2xx vs failure /

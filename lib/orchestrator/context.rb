@@ -59,5 +59,21 @@ class Orchestrator
     def log(message)
       puts "[#{Time.now.utc.iso8601}] #{message}"
     end
+
+    # Logs an operational error AND surfaces it to the update channel (Slack).
+    # The log line is always written; the notification is gated through
+    # Cooldown so a recurring error (e.g. a missing checkout hit every minute)
+    # notifies at most once per backoff window instead of spamming the channel.
+    # `key` groups occurrences for throttling — pass a stable value (not the
+    # full message) when the same condition can recur. Never raises: a failed
+    # notification must not break the orchestrator run.
+    def error(message, key: message, detail: nil, fields: {})
+      log "ERROR: #{message}"
+      cooldown.notify("error_#{key.to_s.gsub(/[^\w]+/, "_")}") do
+        update_channel.error(message, detail: detail, fields: fields)
+      end
+    rescue => e
+      log "Warning: failed to send error notification: #{e.message}"
+    end
   end
 end
