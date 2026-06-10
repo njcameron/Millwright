@@ -30,8 +30,28 @@ class Watchdog
     "stall_minutes" => 20,
     "hang_minutes" => 45,
     "orchestrator_tick_minutes" => 3,
+    "stale_lock_minutes" => 45,
+    "stuck_detection_ticks" => 5,
     "max_fix_attempts" => 2,
     "auto_remediate" => true
+  }.freeze
+
+  # orchestrator.log lines where a handler DETECTED actionable work, mapped to a
+  # canonical target key. Pairs with SPAWN_PATTERNS: detection with no matching
+  # spawn afterwards means dispatch is wedged (e.g. a stale lock, or a crash
+  # between detect and spawn).
+  DETECTION_PATTERNS = {
+    /Issue #(\d+): \d+ unaddressed plan comment/ => "plan",
+    /PR #(\d+) \(issue #\d+\): \d+ unaddressed comment/ => "pr",
+    /PR #(\d+) \(issue #\d+\): CI failed/ => "ci",
+    /Dispatching issue #(\d+)/ => "issue"
+  }.freeze
+
+  SPAWN_PATTERNS = {
+    /Spawned claude for issue #(\d+) plan revision/ => "plan",
+    /Spawned claude for PR #(\d+) review/ => "pr",
+    /Spawned claude for CI fix on PR #(\d+)/ => "ci",
+    /Spawned claude for issue #(\d+) \(pid/ => "issue"
   }.freeze
 
   def initialize(context: nil, now: nil, pid_alive: nil)
@@ -53,7 +73,8 @@ class Watchdog
       [orchestrator_signal].compact +
       error_signals +
       lock_signals +
-      card_signals(flagged)
+      card_signals(flagged) +
+      dispatch_gap_signals
   end
 
   # --- Stage 2: escalation -------------------------------------------------
@@ -153,17 +174,55 @@ class Watchdog
             evidence: matches.last(5).join)]
   end
 
+  # Locks held longer than `stale_lock_minutes`. Decoupled from the
+  # DispatchLock TTL on purpose: the TTL is when the lock STOPS blocking, so a
+  # threshold tied to it can only ever fire once the lock is already harmless.
+  # A shorter threshold lets us catch a lock while it is still wedging dispatch.
   def lock_signals
-    ttl = Orchestrator::DispatchLock::TTL_SECONDS
+    max_age = threshold("stale_lock_minutes") * 60
     Dir.glob(File.join(@ctx.state_dir, "dispatch_*.lock")).filter_map do |lock|
       age = now - File.mtime(lock)
-      next unless age > ttl
+      next unless age > max_age
 
       name = File.basename(lock).sub(/\Adispatch_/, "").sub(/\.lock\z/, "")
       signal("stale-lock", "lock-#{name}",
-             "dispatch lock held #{(age / 60).round}m (> #{(ttl / 60).round}m TTL)",
+             "dispatch lock held #{(age / 60).round}m (> #{threshold("stale_lock_minutes")}m)",
              evidence: lock)
     end
+  end
+
+  # A handler that logs "detected work" for the same target across many ticks
+  # with no matching "Spawned claude ..." line afterwards is wedged — dispatch
+  # is being skipped (stale lock, or a crash between detect and spawn). This is
+  # the symptom-level check: it fires regardless of the underlying cause.
+  def dispatch_gap_signals
+    return [] unless File.exist?(orchestrator_log)
+
+    detections = Hash.new { |h, k| h[k] = [] }
+    last_spawn = {}
+    File.foreach(orchestrator_log).with_index do |line, i|
+      (t = match_target(line, DETECTION_PATTERNS)) && (detections[t] << i)
+      (t = match_target(line, SPAWN_PATTERNS)) && (last_spawn[t] = i)
+    end
+
+    min_ticks = threshold("stuck_detection_ticks")
+    detections.filter_map do |target, indexes|
+      pending = indexes.count { |i| i > (last_spawn[target] || -1) }
+      next if pending < min_ticks
+
+      signal("detection-without-dispatch", target,
+             "detected actionable work #{pending}x with no worker spawned " \
+             "(likely a stuck lock or a crash between detect and dispatch)",
+             evidence: "orchestrator.log; last spawn line: #{last_spawn[target] || "none"}")
+    end
+  end
+
+  def match_target(line, patterns)
+    patterns.each do |regex, kind|
+      m = line.match(regex)
+      return "#{kind}-#{m[1]}" if m
+    end
+    nil
   end
 
   # Cards parked in "In progress" with no live worker — wedged work. Skips

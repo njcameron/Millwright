@@ -38,6 +38,11 @@ class Orchestrator
         end
 
         next unless conclusion == "failure"
+
+        # Release a lingering lock whose fix worker has already finished, so a
+        # subsequent CI failure can be retried (up to max_ci_fixes) without
+        # waiting out the lock's full TTL.
+        @ctx.dispatch_lock.reap_if_finished("ci-#{pr_number}")
         next if @ctx.dispatch_lock.locked?("ci-#{pr_number}")
 
         max_ci_fixes = @ctx.config["max_ci_fixes"] || DEFAULT_MAX_FIXES
@@ -91,6 +96,7 @@ class Orchestrator
 
       prompt = build_ci_fix_prompt(number, repo, pr_number, pr_branch, failed_log)
       pid = @ctx.worker_runner.spawn_worker(prompt: prompt, chdir: repo_dir, log_file: log_file)
+      @ctx.dispatch_lock.record_pid("ci-#{pr_number}", pid)
 
       @ctx.log "Spawned claude for CI fix on PR ##{pr_number} (pid: #{pid})"
     end

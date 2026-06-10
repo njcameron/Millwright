@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.0 — 2026-06-10
+
+- Release dispatch locks as soon as their detached worker exits, instead of waiting out the 1-hour TTL. `PlanCommentHandler` and `CiFailureHandler` left a `plan-<n>`/`ci-<pr>` lock held for the full TTL after the worker finished — blocking the next round of reviewer feedback / the next CI-fix retry for up to an hour (this is what stalled a second round of plan feedback on a live issue). Lock ownership + reaping is centralised in `DispatchLock` (`record_pid` / `reap_if_finished`), which releases a lock once its recorded owner process is gone.
+- Add a watchdog `detection-without-dispatch` signal: a handler that logs detected work for the same target across `routines.watchdog.stuck_detection_ticks` ticks (default 5) with no matching `Spawned claude` line is flagged — the symptom-level catch for a wedged dispatch regardless of cause. Also decouple the stale-lock threshold (`routines.watchdog.stale_lock_minutes`, default 45) from the `DispatchLock` TTL so it can fire while a lock is still blocking.
+
 ## v0.4.0 — 2026-06-10
 
 - Add a runtime watchdog ("doctor", `bin/watch` → `lib/routines/watchdog.rb`) that runs every minute from its own cron entry, independent of the orchestrator. A deterministic scan detects stalled/hung workers (0-byte log + dead/silent process), the orchestrator not ticking, new `ERROR`/stack-trace lines (byte-cursored), stale dispatch locks, and cards wedged in "In progress" with no live worker. When something is flagged it posts to Slack and — single-flighted and rate-limited, with a per-target attempt cap — spawns one Claude worker that performs safe auto-remediation (reversible actions only) and diagnoses-and-proposes for anything touching code/config (`routines.watchdog.auto_remediate: false` makes it diagnose-only). Distinct from the setup-time `bin/doctor` preflight.

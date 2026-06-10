@@ -103,7 +103,7 @@ class PlanCommentHandlerTest < Minitest::Test
     assert_equal repo, channel.errors[0][:fields]["Repo"]
   end
 
-  def test_dispatch_lock_skips_revision
+  def test_dispatch_lock_skips_revision_while_worker_runs
     channel = RecordingUpdateChannel.new
     ctx = build_context(@tmpdir, update_channel: channel)
     repo = "user/definitely-not-a-real-checkout"
@@ -115,12 +115,39 @@ class PlanCommentHandlerTest < Minitest::Test
       { id: 2, author: "human", body: "revise it", type: :issue }
     ]
     ctx.dispatch_lock.lock("plan-530")
+    ctx.dispatch_lock.record_pid("plan-530", Process.pid) # worker alive
     handler = Orchestrator::PlanCommentHandler.new(ctx)
 
     capture_io { handler.call(1) }
 
-    # Locked → returns before the checkout check, so no error is surfaced.
+    # Locked with a live worker → returns before the checkout check.
+    assert ctx.dispatch_lock.locked?("plan-530"), "lock kept while worker runs"
     assert_empty channel.errors
+  end
+
+  # Regression: the plan-N lock from a finished revision must be released once
+  # its worker exits, instead of lingering for the full TTL and blocking the
+  # next round of reviewer feedback. A dead recorded pid → lock reaped → the
+  # handler proceeds to dispatch (here it reaches the missing-checkout path).
+  def test_finished_worker_lock_is_reaped_and_redispatches
+    channel = RecordingUpdateChannel.new
+    ctx = build_context(@tmpdir, update_channel: channel)
+    repo = "user/definitely-not-a-real-checkout"
+    ctx.issue_tracker.items = [
+      { number: 530, status: "cc-planning", type: "ISSUE", repo: repo }
+    ]
+    ctx.vcs.issue_comments = [
+      { id: 1, author: "test-bot[bot]", body: "## Plan", type: :issue },
+      { id: 2, author: "human", body: "round two feedback", type: :issue }
+    ]
+    ctx.dispatch_lock.lock("plan-530")
+    ctx.dispatch_lock.record_pid("plan-530", 999_999) # dead pid
+    handler = Orchestrator::PlanCommentHandler.new(ctx)
+
+    capture_io { handler.call(1) }
+
+    refute ctx.dispatch_lock.locked?("plan-530"), "stale lock should be reaped"
+    assert_equal 1, channel.errors.size, "should proceed to dispatch (missing checkout)"
   end
 
   def test_dry_run_does_not_dispatch

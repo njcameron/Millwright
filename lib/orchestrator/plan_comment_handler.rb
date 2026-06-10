@@ -33,6 +33,11 @@ class Orchestrator
         number = issue[:number]
         next unless repo
 
+        # Release a lingering lock whose revision worker has already finished,
+        # so the NEXT round of reviewer feedback isn't blocked for the lock's
+        # full TTL.
+        @ctx.dispatch_lock.reap_if_finished("plan-#{number}")
+
         unaddressed = find_unaddressed_comments(repo, number, factory_user)
         next if unaddressed.empty?
 
@@ -105,6 +110,7 @@ class Orchestrator
 
       prompt = build_plan_revision_prompt(number, repo, comments)
       pid = @ctx.worker_runner.spawn_worker(prompt: prompt, chdir: repo_dir, log_file: log_file)
+      @ctx.dispatch_lock.record_pid("plan-#{number}", pid)
 
       @ctx.log "Spawned claude for issue ##{number} plan revision (pid: #{pid})"
     end

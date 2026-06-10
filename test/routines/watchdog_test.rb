@@ -176,6 +176,43 @@ class WatchdogTest < Minitest::Test
     assert_empty watchdog.scan.select { |s| s[:kind] == "stale-lock" }
   end
 
+  # Decoupled from the 60m blocking-TTL: a lock 50m old (still blocking) is now
+  # flagged, where the old TTL-tied threshold would have waited until 60m.
+  def test_stale_lock_fires_before_blocking_ttl
+    healthy_orchestrator_log
+    write_lock("plan-530", age_min: 50)
+
+    stale = watchdog.scan.select { |s| s[:kind] == "stale-lock" }
+    assert_equal 1, stale.size
+    assert_equal "lock-plan-530", stale[0][:target]
+  end
+
+  # --- scan: detection-without-dispatch ------------------------------------
+
+  def test_detection_without_dispatch_detected
+    lines = Array.new(5) { |i| "[t#{i}] Issue #530: 1 unaddressed plan comment(s)" }
+    write_log("orchestrator.log", "#{lines.join("\n")}\n", age_min: 0)
+
+    gap = watchdog.scan.select { |s| s[:kind] == "detection-without-dispatch" }
+    assert_equal 1, gap.size
+    assert_equal "plan-530", gap[0][:target]
+  end
+
+  def test_detection_followed_by_spawn_not_flagged
+    lines = Array.new(5) { |i| "[t#{i}] Issue #530: 1 unaddressed plan comment(s)" }
+    lines << "[t6] Spawned claude for issue #530 plan revision (pid: 4242)"
+    write_log("orchestrator.log", "#{lines.join("\n")}\n", age_min: 0)
+
+    assert_empty watchdog.scan.select { |s| s[:kind] == "detection-without-dispatch" }
+  end
+
+  def test_detection_below_threshold_not_flagged
+    lines = Array.new(2) { |i| "[t#{i}] Issue #530: 1 unaddressed plan comment(s)" }
+    write_log("orchestrator.log", "#{lines.join("\n")}\n", age_min: 0)
+
+    assert_empty watchdog.scan.select { |s| s[:kind] == "detection-without-dispatch" }
+  end
+
   def test_stuck_card_detected
     healthy_orchestrator_log
     context = ctx

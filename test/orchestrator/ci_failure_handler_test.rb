@@ -90,6 +90,7 @@ class CiFailureHandlerTest < Minitest::Test
     @vcs.define_singleton_method(:fetch_failed_log) { |_repo, _branch| "Error: test failed" }
 
     @ctx.dispatch_lock.lock("ci-99")
+    @ctx.dispatch_lock.record_pid("ci-99", Process.pid) # fix worker still running
 
     dispatched = []
     @handler.define_singleton_method(:dispatch_ci_fix) do |*args|
@@ -98,6 +99,26 @@ class CiFailureHandlerTest < Minitest::Test
 
     @handler.call(2)
     assert_empty dispatched
+  end
+
+  # Regression: a lock left behind by a finished fix worker must be reaped so a
+  # later CI failure can be retried, rather than blocking for the lock's TTL.
+  def test_ci_fix_reaps_finished_worker_lock
+    with_pr_in_review
+    @vcs.define_singleton_method(:latest_run_conclusion) { |_repo, _branch| "failure" }
+    @vcs.define_singleton_method(:fetch_failed_log) { |_repo, _branch| "Error: test failed" }
+
+    @ctx.dispatch_lock.lock("ci-99")
+    @ctx.dispatch_lock.record_pid("ci-99", 999_999) # dead pid
+
+    dispatched = []
+    @handler.define_singleton_method(:dispatch_ci_fix) do |*args|
+      dispatched << args
+    end
+
+    @handler.call(2)
+    assert_equal 1, dispatched.size
+    refute @ctx.dispatch_lock.locked?("ci-99"), "stale lock should be reaped"
   end
 
   def test_ci_success_resets_fix_count

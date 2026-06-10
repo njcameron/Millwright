@@ -67,6 +67,8 @@ routines:
     stall_minutes: 20              # 0-byte worker log + dead process → crashed
     hang_minutes: 45               # worker process alive but no output → hung
     orchestrator_tick_minutes: 3   # no orchestrator.log line in N min → cron/orchestrator down
+    stale_lock_minutes: 45         # dispatch lock held longer than this → wedged
+    stuck_detection_ticks: 5       # work detected this many ticks with no worker spawned → wedged
     max_fix_attempts: 2            # auto-remediation attempts per target before giving up
     auto_remediate: true           # false → diagnose-and-propose only, never auto-fix
 
