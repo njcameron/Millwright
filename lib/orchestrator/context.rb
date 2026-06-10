@@ -19,7 +19,7 @@ class Orchestrator
 
     def initialize(config:,
                    issue_tracker: nil, vcs: nil, update_channel: nil,
-                   coding_agent: nil,
+                   coding_agent: nil, worker_runner: nil,
                    dry_run: false, state_dir: nil, logs_dir: nil)
       @config = config
       @statuses = config["statuses"]
@@ -46,7 +46,7 @@ class Orchestrator
 
       @dispatch_lock = DispatchLock.new(@state_dir)
       @cooldown = Cooldown.new(@state_dir)
-      @worker_runner = WorkerRunner.new(
+      @worker_runner = worker_runner || WorkerRunner.new(
         config: config, vcs: @vcs, coding_agent: @coding_agent,
         update_channel: @update_channel, logs_dir: @logs_dir
       )

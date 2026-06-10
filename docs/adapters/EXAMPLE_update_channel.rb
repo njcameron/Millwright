@@ -31,6 +31,9 @@ module Adapters
       def review_queue_full(in_review_count, max_review); raise NotImplementedError; end
       def ci_fix_dispatched(issue_number, repo, pr_number, attempt, max_attempts); raise NotImplementedError; end
       def ci_fix_gave_up(issue_number, repo, pr_number, attempts); raise NotImplementedError; end
+      def doctor_detected(signals); raise NotImplementedError; end
+      def doctor_gave_up(target, attempts); raise NotImplementedError; end
+      def doctor_recovered(target); raise NotImplementedError; end
       def weekly_digest(content, pr_count); raise NotImplementedError; end
       def security_scan(repo, counts, report = nil, report_path = nil); raise NotImplementedError; end
       def no_slots(active_count, max_workers); raise NotImplementedError; end

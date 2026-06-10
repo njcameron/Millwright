@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.0 — 2026-06-10
+
+- Add a runtime watchdog ("doctor", `bin/watch` → `lib/routines/watchdog.rb`) that runs every minute from its own cron entry, independent of the orchestrator. A deterministic scan detects stalled/hung workers (0-byte log + dead/silent process), the orchestrator not ticking, new `ERROR`/stack-trace lines (byte-cursored), stale dispatch locks, and cards wedged in "In progress" with no live worker. When something is flagged it posts to Slack and — single-flighted and rate-limited, with a per-target attempt cap — spawns one Claude worker that performs safe auto-remediation (reversible actions only) and diagnoses-and-proposes for anything touching code/config (`routines.watchdog.auto_remediate: false` makes it diagnose-only). Distinct from the setup-time `bin/doctor` preflight.
+- Add `doctor_detected` / `doctor_gave_up` / `doctor_recovered` update-channel notifications, and make `Orchestrator::Context#worker_runner` injectable for testing.
+
 ## v0.3.0 — 2026-06-10
 
 - Add a planning feedback loop: a new `PlanCommentHandler` polls the cc-planning column each tick for unaddressed reviewer comments and dispatches a planning-only worker to revise the plan in place (posts the revised plan as a new comment, leaves the card in cc-planning and the "needs review" label untouched). Mirrors `PrCommentHandler` — posts a WIP reply for dedup and locks `plan-<n>` to prevent concurrent revisions. Previously, comments on a plan in cc-planning were never picked up; feedback was only consumed once the card was manually moved to "Planning approved".

@@ -17,6 +17,7 @@ A cron-driven orchestrator that works off a project board (e.g. a GitHub Project
 - [Routines](#routines)
   - [Weekly product digest](#weekly-product-digest)
   - [Weekly security scan](#weekly-security-scan)
+  - [Runtime watchdog ("doctor")](#runtime-watchdog-doctor)
 - [Multi-repo support](#multi-repo-support)
 - [Project board statuses](#project-board-statuses)
 - [Slack notifications](#slack-notifications)
@@ -134,6 +135,15 @@ Run manually: `bundle exec ruby lib/routines/weekly_digest.rb`.
 
 A second routine (`lib/routines/security_scan.rb`) scans one or more configured repositories for high-confidence security issues that existing SAST and dependency-audit tools wouldn't catch (IDOR, broken access control, business-logic flaws, etc.) and posts a report to Slack. Configure target repos under `routines.security_scan.repos` in `config.yml`.
 
+### Runtime watchdog ("doctor")
+
+A health-check routine (`lib/routines/watchdog.rb`, run via `bin/watch`) runs **every minute from its own cron entry, independent of the orchestrator** — so it can also catch the orchestrator itself being down. It works in two stages:
+
+1. **Deterministic scan** of logs, process liveness, dispatch locks, and board state for: stalled/hung workers (a 0-byte worker log whose process is dead or has produced nothing for too long), the orchestrator not ticking, new `ERROR`/stack-trace lines, stale dispatch locks, and cards wedged in "In progress" with no live worker.
+2. **Escalation** — when something is flagged it posts to Slack (🩺) and, single-flighted and rate-limited, spawns one Claude worker to investigate. By default the worker performs **safe auto-remediation** (reversible actions only — clearing a confirmed-stale lock, killing a dead/hung worker so it respawns, nudging a wedged card) and **diagnoses-and-proposes** for anything touching code or config. Set `routines.watchdog.auto_remediate: false` to make it diagnose-only. Thresholds and attempt limits are configured under `routines.watchdog` in `config.yml`.
+
+This is distinct from `bin/doctor` (`lib/setup/doctor.rb`), which is a one-shot **setup-time** preflight, not a runtime monitor.
+
 ## Multi-repo support
 
 A single GitHub Project can manage issues across multiple repositories. The orchestrator determines which repo an issue belongs to from GitHub's built-in repository field on each project item — no manual tagging required.
@@ -163,11 +173,13 @@ Key events are posted to Slack via an incoming webhook:
 | Plan ready for review | 📋 | Claude finishes writing a plan |
 | PR ready for review | 🔀 | Claude creates a PR |
 | Comments found | 💬 | Orchestrator finds unaddressed PR comments |
+| Plan feedback found | 💬 | Orchestrator finds unaddressed comments on a plan in cc-planning, revising it |
 | Comments addressed | ✅ | Claude finishes responding to PR comments |
 | Worker failed | 🔴 | A spawned Claude process errors out |
 | No available slots | ⏸️ | All worker slots are occupied |
 | CI fix dispatched | 🔴 | CI failed on a PR, dispatching Claude to fix it |
 | CI fix gave up | ⚠️ | CI still failing after max auto-fix attempts |
+| Doctor detected / gave up / recovered | 🩺 | Runtime watchdog flags, exhausts fixes for, or clears a problem |
 | Weekly digest | 📰 | Weekly product update generated and posted |
 | Review queue full | 📥 | Too many PRs waiting for review, pausing new issues |
 
@@ -257,10 +269,11 @@ Run it for real with:
 bundle exec ruby lib/orchestrator.rb
 ```
 
-**Schedule via cron.** The `bin/orchestrate`, `bin/weekly-digest`, and `bin/security-scan` wrappers `cd` into the repo and stream output to `logs/YYYY-MM-DD/*.log`. Adjust the path to wherever you cloned Millwright:
+**Schedule via cron.** The `bin/orchestrate`, `bin/watch`, `bin/weekly-digest`, and `bin/security-scan` wrappers `cd` into the repo and stream output to `logs/YYYY-MM-DD/*.log`. Adjust the path to wherever you cloned Millwright:
 
 ```cron
 * * * * * /path/to/millwright/bin/orchestrate
+* * * * * /path/to/millwright/bin/watch
 0 12 * * 5 /path/to/millwright/bin/weekly-digest
 0 6 * * 1 /path/to/millwright/bin/security-scan
 ```
@@ -309,10 +322,11 @@ Tests use minitest (stdlib only) and stub all external calls via dependency inje
 ```
 millwright/
   bin/orchestrate            # Bash entry point for cron (every minute)
+  bin/watch                  # Bash entry point for the runtime watchdog cron (every minute)
   bin/weekly-digest          # Bash entry point for weekly digest cron
   bin/security-scan          # Bash entry point for weekly security scan cron
   lib/orchestrator.rb        # Polls project board, dispatches Claude, watches PR comments and CI
-  lib/routines/              # Scheduled standalone scripts (weekly_digest, security_scan)
+  lib/routines/              # Scheduled standalone scripts (weekly_digest, security_scan, watchdog)
   lib/adapters/              # Pluggable integrations (issue tracker, VCS, update channel, coding agent)
   lib/github_client.rb       # GraphQL reads + gh CLI writes against GitHub Projects v2
   lib/github_app_token.rb    # JWT + installation token generation for bot identity

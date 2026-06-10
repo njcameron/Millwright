@@ -61,6 +61,14 @@ routines:
   weekly_digest:
     # Repo to summarise merged PRs from.
     repo: <your-owner>/<your-repo>
+  watchdog:
+    # Runtime health check (bin/watch). Runs every minute from its own cron entry,
+    # independent of the orchestrator, and surfaces stalls/breakages to Slack.
+    stall_minutes: 20              # 0-byte worker log + dead process → crashed
+    hang_minutes: 45               # worker process alive but no output → hung
+    orchestrator_tick_minutes: 3   # no orchestrator.log line in N min → cron/orchestrator down
+    max_fix_attempts: 2            # auto-remediation attempts per target before giving up
+    auto_remediate: true           # false → diagnose-and-propose only, never auto-fix
 
 # Names of the columns on your GitHub Project board. Must match exactly (case-sensitive).
 statuses:

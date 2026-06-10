@@ -44,6 +44,22 @@ module Adapters
       raise NotImplementedError
     end
 
+    # Runtime watchdog ("doctor") events. detected: deterministic scan flagged
+    # one or more problems and is escalating. gave_up: auto-remediation
+    # exhausted its attempts for a target. recovered: a previously-flagged
+    # target is healthy again.
+    def doctor_detected(signals)
+      raise NotImplementedError
+    end
+
+    def doctor_gave_up(target, attempts)
+      raise NotImplementedError
+    end
+
+    def doctor_recovered(target)
+      raise NotImplementedError
+    end
+
     def weekly_digest(content, pr_count)
       raise NotImplementedError
     end

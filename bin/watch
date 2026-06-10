@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+LOG_DIR="logs/$(date -u +%Y-%m-%d)"
+mkdir -p "$LOG_DIR"
+exec bundle exec ruby lib/routines/watchdog.rb >> "$LOG_DIR/watchdog.log" 2>&1

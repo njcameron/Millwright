@@ -4,6 +4,7 @@ module UpdateChannelContract
     pr_comments_found plan_comments_found pr_comments_addressed
     worker_failed review_queue_full
     ci_fix_dispatched ci_fix_gave_up
+    doctor_detected doctor_gave_up doctor_recovered
     weekly_digest security_scan no_slots
   ].freeze
 

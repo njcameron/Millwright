@@ -95,6 +95,25 @@ module Adapters
         )
       end
 
+      def doctor_detected(signals)
+        lines = signals.map { |s| "• *#{s[:kind]}* (#{s[:target]}) — #{s[:detail]}" }
+        post(
+          text: "🩺 *Doctor: detected #{signals.size} issue#{"s" if signals.size != 1}* — investigating\n#{lines.join("\n")}"
+        )
+      end
+
+      def doctor_gave_up(target, attempts)
+        post(
+          text: "🩺 *Doctor gave up on `#{target}`* after #{attempts} auto-remediation attempt#{"s" if attempts != 1} — needs human attention"
+        )
+      end
+
+      def doctor_recovered(target)
+        post(
+          text: "🩺 *Doctor: `#{target}` recovered* — back to healthy"
+        )
+      end
+
       def weekly_digest(content, pr_count)
         header = "📰 *Weekly Digest* — #{pr_count} PR#{"s" if pr_count != 1} shipped this week"
         full_text = "#{header}\n\n#{content}"
