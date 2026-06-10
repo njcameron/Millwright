@@ -20,6 +20,10 @@ module Adapters
       raise NotImplementedError
     end
 
+    def plan_comments_found(issue_number, repo, count)
+      raise NotImplementedError
+    end
+
     def pr_comments_addressed(issue_number, repo, pr_number)
       raise NotImplementedError
     end

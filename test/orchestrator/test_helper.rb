@@ -86,9 +86,11 @@ class StubVersionControl
 
   def pr_review_comments(_repo, _pr_number) = @review_comments
   def pr_issue_comments(_repo, _pr_number) = @issue_comments
+  def issue_comments(_repo, _issue_number) = @issue_comments
 
   def post_review_reply(_repo, _pr_number, _comment_id, _body); end
   def post_pr_comment(_repo, _pr_number, _body); end
+  def post_issue_comment(_repo, _issue_number, _body); end
 
   def latest_run_conclusion(repo, branch)
     @run_conclusions[[repo, branch]]

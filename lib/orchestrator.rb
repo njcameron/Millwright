@@ -7,6 +7,7 @@ require_relative "orchestrator/context"
 require_relative "orchestrator/status_transitions"
 require_relative "orchestrator/dispatcher"
 require_relative "orchestrator/pr_comment_handler"
+require_relative "orchestrator/plan_comment_handler"
 require_relative "orchestrator/ci_failure_handler"
 
 class Orchestrator
@@ -17,6 +18,7 @@ class Orchestrator
     @status_transitions = StatusTransitions.new(@ctx)
     @dispatcher = Dispatcher.new(@ctx)
     @pr_comment_handler = PrCommentHandler.new(@ctx)
+    @plan_comment_handler = PlanCommentHandler.new(@ctx)
     @ci_failure_handler = CiFailureHandler.new(@ctx)
   end
 
@@ -30,6 +32,7 @@ class Orchestrator
     # Always-run checks (regardless of available slots)
     @status_transitions.call
     @pr_comment_handler.call([1, available_slots].max)
+    @plan_comment_handler.call([1, available_slots].max)
     @ci_failure_handler.call([1, available_slots].max)
 
     if available_slots <= 0

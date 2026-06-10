@@ -20,6 +20,13 @@ module Adapters
       raise NotImplementedError
     end
 
+    # Array of comment hashes on a plain issue (same shape as
+    # pr_issue_comments). PRs are issues in GitHub's API, so these may share
+    # an implementation.
+    def issue_comments(repo, issue_number)
+      raise NotImplementedError
+    end
+
     # Post a reply to a specific review comment.
     def post_review_reply(repo, pr_number, comment_id, body)
       raise NotImplementedError
@@ -27,6 +34,11 @@ module Adapters
 
     # Post a top-level comment on the PR.
     def post_pr_comment(repo, pr_number, body)
+      raise NotImplementedError
+    end
+
+    # Post a top-level comment on an issue.
+    def post_issue_comment(repo, issue_number, body)
       raise NotImplementedError
     end
 

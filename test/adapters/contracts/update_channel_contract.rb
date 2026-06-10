@@ -1,7 +1,7 @@
 module UpdateChannelContract
   EVENT_METHODS = %i[
     issue_picked_up plan_ready pr_created
-    pr_comments_found pr_comments_addressed
+    pr_comments_found plan_comments_found pr_comments_addressed
     worker_failed review_queue_full
     ci_fix_dispatched ci_fix_gave_up
     weekly_digest security_scan no_slots

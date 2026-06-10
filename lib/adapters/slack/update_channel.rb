@@ -54,6 +54,13 @@ module Adapters
         )
       end
 
+      def plan_comments_found(issue_number, repo, count)
+        post(
+          text: "💬 *Revising plan* — #{count} new comment#{"s" if count != 1} on <https://github.com/#{repo}/issues/#{issue_number}|##{issue_number}> in cc-planning",
+          fields: { "Repo" => repo }
+        )
+      end
+
       def pr_comments_addressed(issue_number, repo, pr_number)
         post(
           text: "✅ *Finished responding to comments* on <https://github.com/#{repo}/pull/#{pr_number}|PR ##{pr_number}> (issue <https://github.com/#{repo}/issues/#{issue_number}|##{issue_number}>)",

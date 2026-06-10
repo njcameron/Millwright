@@ -2,8 +2,8 @@ module VersionControlContract
   # Concrete adapter tests `include` this and define `build_adapter`.
 
   REQUIRED_METHODS = %i[
-    find_pr_for_issue pr_review_comments pr_issue_comments
-    post_review_reply post_pr_comment
+    find_pr_for_issue pr_review_comments pr_issue_comments issue_comments
+    post_review_reply post_pr_comment post_issue_comment
     latest_run_conclusion fetch_failed_log
     fetch_authenticated worker_env prompts
   ].freeze

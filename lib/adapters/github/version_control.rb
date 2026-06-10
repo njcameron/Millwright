@@ -61,9 +61,9 @@ module Adapters
         end
       end
 
-      def pr_issue_comments(repo, pr_number)
+      def issue_comments(repo, issue_number)
         output, status = Open3.capture2(
-          "gh", "api", "repos/#{repo}/issues/#{pr_number}/comments",
+          "gh", "api", "repos/#{repo}/issues/#{issue_number}/comments",
           "--paginate"
         )
         return [] unless status.success?
@@ -76,6 +76,10 @@ module Adapters
           }
         end
       end
+
+      # A PR's top-level (non-inline) comments live on the issues endpoint —
+      # PRs are issues in GitHub's API — so this is the same call.
+      alias pr_issue_comments issue_comments
 
       def post_review_reply(repo, pr_number, comment_id, body)
         env = { "GH_TOKEN" => worker_token }
@@ -91,6 +95,14 @@ module Adapters
         run_gh!(
           env,
           "gh", "pr", "comment", pr_number.to_s, "-R", repo, "--body", body
+        )
+      end
+
+      def post_issue_comment(repo, issue_number, body)
+        env = { "GH_TOKEN" => worker_token }
+        run_gh!(
+          env,
+          "gh", "issue", "comment", issue_number.to_s, "-R", repo, "--body", body
         )
       end
 

@@ -36,6 +36,12 @@ module Adapters
         raise NotImplementedError
       end
 
+      # TODO: Array of comment hashes on a plain issue, same shape as
+      #   pr_issue_comments. Often the same endpoint (PRs are issues).
+      def issue_comments(repo, issue_number)
+        raise NotImplementedError
+      end
+
       # TODO: Post a threaded reply to `comment_id`.
       def post_review_reply(repo, pr_number, comment_id, body)
         raise NotImplementedError
@@ -43,6 +49,11 @@ module Adapters
 
       # TODO: Post a top-level PR comment.
       def post_pr_comment(repo, pr_number, body)
+        raise NotImplementedError
+      end
+
+      # TODO: Post a top-level comment on an issue.
+      def post_issue_comment(repo, issue_number, body)
         raise NotImplementedError
       end
 

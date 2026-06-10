@@ -25,6 +25,7 @@ module Adapters
       def plan_ready(issue_number, title, repo); raise NotImplementedError; end
       def pr_created(issue_number, repo, pr_number); raise NotImplementedError; end
       def pr_comments_found(issue_number, repo, pr_number, count); raise NotImplementedError; end
+      def plan_comments_found(issue_number, repo, count); raise NotImplementedError; end
       def pr_comments_addressed(issue_number, repo, pr_number); raise NotImplementedError; end
       def worker_failed(issue_number, repo, error); raise NotImplementedError; end
       def review_queue_full(in_review_count, max_review); raise NotImplementedError; end
