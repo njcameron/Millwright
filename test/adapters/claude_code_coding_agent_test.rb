@@ -35,6 +35,23 @@ class ClaudeCodeCodingAgentTest < Minitest::Test
     assert_equal "worker-1", argv[idx + 1]
   end
 
+  def test_command_omits_model_by_default
+    refute_includes build_adapter.command(prompt_path: "/tmp/p"), "--model"
+  end
+
+  def test_command_includes_configured_model
+    adapter = Adapters::ClaudeCode::CodingAgent.new("coding_agent" => { "model" => "claude-opus-4-8" })
+    argv = adapter.command(prompt_path: "/tmp/p")
+    idx = argv.index("--model")
+    refute_nil idx, "expected --model in argv"
+    assert_equal "claude-opus-4-8", argv[idx + 1]
+  end
+
+  def test_blank_model_is_treated_as_unset
+    adapter = Adapters::ClaudeCode::CodingAgent.new("coding_agent" => { "model" => "  " })
+    refute_includes adapter.command(prompt_path: "/tmp/p"), "--model"
+  end
+
   def test_env_overrides_clears_claude_code_session
     overrides = build_adapter.env_overrides
     assert_nil overrides["CLAUDECODE"]

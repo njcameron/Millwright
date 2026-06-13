@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.0 — 2026-06-13
+
+- Let the Claude Code coding-agent pin its model via `coding_agent.model` (passed as `--model`). The CLI's default model can be one this account lacks access to (e.g. `claude-fable-5`), which silently kills every spawned worker — and the watchdog's own doctor — on startup with a "model unavailable" error. Leaving it unset preserves the old default-model behavior.
+- Fix a self-referential watchdog loop: `lock_signals` globbed `dispatch_*.lock` including the watchdog's OWN `dispatch_doctor.lock`, so once that lock aged past `stale_lock_minutes` (45) the watchdog flagged it as stale and spawned a doctor to investigate its own leftover lock — re-touching the lock and repeating roughly every 45m forever. The doctor lock is now excluded; it is self-managed via `DispatchLock` and has its own blocking TTL.
+- Reap the watchdog's `doctor` single-flight lock on worker exit (`record_pid` on dispatch + `reap_if_finished` before the single-flight check), matching the v0.5.0 plan/CI handlers. Previously a doctor that died on startup held the lock for the full 1-hour TTL, wedging every retry.
+
 ## v0.5.0 — 2026-06-10
 
 - Release dispatch locks as soon as their detached worker exits, instead of waiting out the 1-hour TTL. `PlanCommentHandler` and `CiFailureHandler` left a `plan-<n>`/`ci-<pr>` lock held for the full TTL after the worker finished — blocking the next round of reviewer feedback / the next CI-fix retry for up to an hour (this is what stalled a second round of plan feedback on a live issue). Lock ownership + reaping is centralised in `DispatchLock` (`record_pid` / `reap_if_finished`), which releases a lock once its recorded owner process is gone.

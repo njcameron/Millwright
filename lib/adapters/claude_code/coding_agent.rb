@@ -14,6 +14,7 @@ module Adapters
     #   coding_agent:
     #     bin: /path/to/claude       # override the binary (optional)
     #     remote_control: true       # true (default) | false | "session-name"
+    #     model: claude-opus-4-8     # pin the worker model (optional)
     class CodingAgent < Adapters::CodingAgent
       DEFAULT_BIN = "claude"
 
@@ -29,10 +30,17 @@ module Adapters
         # Defaults to on ("always include"); set `remote_control: false` to
         # opt out, or a string to name the Remote Control session.
         @remote_control = agent_cfg.fetch("remote_control", true)
+        # Pin the worker model. Unset → the CLI's own default, which can be a
+        # model this account lacks access to — a failure mode that silently
+        # kills every worker (and the doctor) on startup. Set it to a known-
+        # available model to be safe.
+        model = agent_cfg["model"]
+        @model = model.to_s.strip.empty? ? nil : model.to_s
       end
 
       def command(prompt_path:)
         argv = [@bin, "--permission-mode", "bypassPermissions"]
+        argv.concat(["--model", @model]) if @model
         argv.concat(remote_control_args)
         argv << "-p"
         argv

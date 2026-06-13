@@ -27,9 +27,12 @@ class WatchdogTest < Minitest::Test
 
     def initialize = @spawns = []
 
+    # Return a live pid: a just-spawned worker is alive, and the watchdog now
+    # records its owner so the lock can be reaped on exit. Using the test
+    # process's own pid keeps reap_if_finished from treating it as dead.
     def spawn_worker(prompt:, chdir:, log_file:)
       @spawns << { prompt: prompt, chdir: chdir, log_file: log_file }
-      4242
+      Process.pid
     end
   end
 
@@ -176,6 +179,26 @@ class WatchdogTest < Minitest::Test
     assert_empty watchdog.scan.select { |s| s[:kind] == "stale-lock" }
   end
 
+  # Regression: the watchdog must not flag its OWN single-flight lock as stale.
+  # It is self-managed (lock / reap / record_pid); flagging it spawns a doctor to
+  # investigate its own leftover lock, an endless self-referential loop.
+  def test_doctor_lock_not_flagged_as_stale
+    healthy_orchestrator_log
+    write_lock("doctor", age_min: 90) # well past stale_lock_minutes
+
+    assert_empty watchdog.scan.select { |s| s[:target] == "lock-doctor" }
+  end
+
+  # Excluding the doctor lock must not suppress genuine worker-lock detection.
+  def test_other_stale_locks_still_flagged_alongside_doctor_lock
+    healthy_orchestrator_log
+    write_lock("doctor", age_min: 90)
+    write_lock("pr-99", age_min: 90)
+
+    stale = watchdog.scan.select { |s| s[:kind] == "stale-lock" }
+    assert_equal ["lock-pr-99"], stale.map { |s| s[:target] }
+  end
+
   # Decoupled from the 60m blocking-TTL: a lock 50m old (still blocking) is now
   # flagged, where the old TTL-tied threshold would have waited until 60m.
   def test_stale_lock_fires_before_blocking_ttl
@@ -261,10 +284,44 @@ class WatchdogTest < Minitest::Test
     write_log("issue-700.log", "", age_min: 30)
     context = ctx
     context.dispatch_lock.lock("doctor")
+    context.dispatch_lock.record_pid("doctor", Process.pid) # in-flight doctor, owner alive
 
     capture_io { watchdog(context: context, alive: []).call }
 
     assert_empty @runner.spawns
+  end
+
+  # Regression: a doctor worker that died on startup (e.g. an unavailable
+  # model) leaves the lock held with a recorded-but-dead owner pid. The next
+  # tick must reap it and re-dispatch, instead of waiting out the full TTL.
+  def test_call_reaps_dead_doctor_lock_and_redispatches
+    healthy_orchestrator_log("Spawned claude for issue #700 (pid: 111)")
+    write_log("issue-700.log", "", age_min: 30)
+    context = ctx
+
+    dead_pid = Process.spawn("true")
+    Process.wait(dead_pid)
+    context.dispatch_lock.lock("doctor")
+    context.dispatch_lock.record_pid("doctor", dead_pid)
+
+    capture_io { watchdog(context: context, alive: []).call }
+
+    assert_equal 1, @runner.spawns.size, "should reap the dead-owner lock and re-dispatch"
+    assert context.dispatch_lock.locked?("doctor")
+  end
+
+  # After dispatching, the doctor's owner pid is recorded so the lock can be
+  # reaped on exit rather than held for the full TTL.
+  def test_dispatch_records_doctor_owner_pid
+    healthy_orchestrator_log("Spawned claude for issue #700 (pid: 111)")
+    write_log("issue-700.log", "", age_min: 30)
+    context = ctx
+
+    capture_io { watchdog(context: context, alive: []).call }
+
+    pid_file = File.join(@tmpdir, "state", "dispatch_doctor.pid")
+    assert_path_exists pid_file
+    assert_equal Process.pid.to_s, File.read(pid_file).strip
   end
 
   def test_call_dry_run_does_not_dispatch

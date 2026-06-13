@@ -48,6 +48,10 @@ coding_agent:
   # true (default) → pass --remote-control | false → omit it |
   # "session-name" → pass --remote-control <name>.
   remote_control: true
+  # Pin the worker model (passed as --model). Leave unset to use the CLI's own
+  # default — but note an unavailable default model silently kills every worker
+  # (and the doctor) on startup, so pinning a known-available model is safer.
+  # model: claude-opus-4-8
 
 # Optional: configure individual routines.
 routines:

@@ -98,6 +98,11 @@ class Watchdog
     end
 
     return if @ctx.dry_run
+
+    # Release the single-flight lock if the previous doctor worker has exited.
+    # Without this, a doctor that dies on startup (e.g. an unavailable model)
+    # leaves the lock held for the full TTL, wedging every retry for an hour.
+    @ctx.dispatch_lock.reap_if_finished("doctor")
     return if @ctx.dispatch_lock.locked?("doctor") # single-flight investigation
 
     target = signals.first[:target]
@@ -181,10 +186,16 @@ class Watchdog
   def lock_signals
     max_age = threshold("stale_lock_minutes") * 60
     Dir.glob(File.join(@ctx.state_dir, "dispatch_*.lock")).filter_map do |lock|
+      name = File.basename(lock).sub(/\Adispatch_/, "").sub(/\.lock\z/, "")
+      # The doctor's own single-flight lock is self-managed (lock / reap_if_finished
+      # / record_pid) and has its own blocking TTL. Flagging it here makes the
+      # watchdog spawn a doctor to investigate its own leftover lock — a self-
+      # referential loop that re-touches the lock and repeats every ~45m forever.
+      next if name == "doctor"
+
       age = now - File.mtime(lock)
       next unless age > max_age
 
-      name = File.basename(lock).sub(/\Adispatch_/, "").sub(/\.lock\z/, "")
       signal("stale-lock", "lock-#{name}",
              "dispatch lock held #{(age / 60).round}m (> #{threshold("stale_lock_minutes")}m)",
              evidence: lock)
@@ -249,6 +260,9 @@ class Watchdog
     increment_fix_count(target)
     prompt = build_prompt(signals)
     pid = @ctx.worker_runner.spawn_worker(prompt: prompt, chdir: millwright_root, log_file: log_file)
+    # Record the owner so reap_if_finished can release the lock the moment the
+    # worker exits, rather than waiting out the full TTL.
+    @ctx.dispatch_lock.record_pid("doctor", pid)
 
     @ctx.log "Watchdog: spawned doctor worker for #{target} " \
              "(pid: #{pid}, attempt #{fix_count(target)}/#{max_fix_attempts})"
