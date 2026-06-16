@@ -49,6 +49,15 @@ class DispatcherTest < Minitest::Test
     assert_includes prompt, "STOP"
   end
 
+  def test_build_prompt_fresh_issue_reads_comments
+    # Regression: a freshly-dispatched worker must read issue comments, not just
+    # the body, so human-provided context (error logs, clarifications) posted as
+    # comments is visible and the worker doesn't re-block on missing info.
+    prompt = call_build_prompt(planning_approved: false)
+    assert_includes prompt, "gh issue view 42 -R user/repo --comments",
+                    "fresh-mode worker must view the issue with --comments"
+  end
+
   def test_build_prompt_fresh_issue_does_not_mention_approved_plan
     prompt = call_build_prompt(planning_approved: false)
     refute_includes prompt, "approved"

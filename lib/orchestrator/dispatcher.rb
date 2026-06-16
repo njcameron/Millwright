@@ -93,7 +93,9 @@ class Orchestrator
       vcs = @ctx.vcs.prompts
       it = @ctx.issue_tracker.prompts
       <<~STEPS
-        1. Read issue ##{issue_number} using `#{vcs.view_issue(issue_number: issue_number, repo: repo)}`.
+        1. Read issue ##{issue_number} using `#{vcs.view_issue(issue_number: issue_number, repo: repo, comments: true)}`.
+           Read the comments too, not just the body — a human may have added context, an error log,
+           or clarifications there that you need to do the work correctly.
         2. Check the issue description. If it says to plan first (e.g. "plan this first", "needs planning", "write a plan"):
            - Write a detailed implementation plan as a comment on the issue:
              `#{vcs.post_issue_comment(issue_number: issue_number, repo: repo, body_placeholder: "<your plan>")}`
