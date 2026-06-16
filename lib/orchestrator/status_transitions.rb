@@ -19,8 +19,16 @@ class Orchestrator
         next unless repo
 
         if @ctx.issue_tracker.flag_for_review?(repo, number)
-          @ctx.log "Issue ##{number}: plan ready, moving to cc-planning"
-          @ctx.issue_tracker.set_status(number, @ctx.statuses["planning"], repo: repo)
+          unless @ctx.issue_tracker.set_status(number, @ctx.statuses["planning"], repo: repo)
+            @ctx.error(
+              "Issue ##{number}: flagged for review but could not be moved to cc-planning (not found on board)",
+              key: "planning_move_failed_#{repo}_#{number}",
+              fields: { "Repo" => repo, "Issue" => "##{number}" }
+            )
+            next
+          end
+
+          @ctx.log "Issue ##{number}: plan ready, moved to cc-planning"
           @ctx.dispatch_lock.unlock(number)
           pr = @ctx.vcs.find_pr_for_issue(repo, number)
           @ctx.dispatch_lock.unlock("pr-#{pr[:number]}") if pr
@@ -31,8 +39,16 @@ class Orchestrator
         pr = @ctx.vcs.find_pr_for_issue(repo, number)
         next unless pr
 
-        @ctx.log "Issue ##{number}: PR found, moving to In review"
-        @ctx.issue_tracker.set_status(number, @ctx.statuses["pr"], repo: repo)
+        unless @ctx.issue_tracker.set_status(number, @ctx.statuses["pr"], repo: repo)
+          @ctx.error(
+            "Issue ##{number}: PR ##{pr[:number]} open but could not be moved to In review (not found on board)",
+            key: "review_move_failed_#{repo}_#{number}",
+            fields: { "Repo" => repo, "Issue" => "##{number}" }
+          )
+          next
+        end
+
+        @ctx.log "Issue ##{number}: PR found, moved to In review"
         @ctx.dispatch_lock.unlock(number)
         @ctx.dispatch_lock.unlock("pr-#{pr[:number]}")
       end

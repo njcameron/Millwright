@@ -32,9 +32,13 @@ module Adapters
         planning + building
       end
 
+      # Returns true if the status was applied, false if the issue isn't on the
+      # board (so it can't be moved). Callers MUST surface a false return rather
+      # than treat the move as done — a silent no-op here is what let a planning
+      # task stay put while the log claimed it moved to cc-planning (issue #3).
       def set_status(issue_number, status, repo: nil)
         item = find_project_item(issue_number, repo: repo)
-        return unless item
+        return false unless item
 
         cmd = [
           "gh", "project", "item-edit",
@@ -44,6 +48,7 @@ module Adapters
           "--single-select-option-id", status_option_id(status)
         ]
         system(*cmd, exception: true)
+        true
       end
 
       def fetch_issue_body(issue_number, repo:)

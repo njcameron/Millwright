@@ -85,6 +85,27 @@ class GithubProjectsIssueTrackerTest < Minitest::Test
     assert_equal "OPT_1", adapter.send(:status_option_id, "Ready")
   end
 
+  # ---- set_status reports whether the move applied (regression for #3) ----
+
+  def test_set_status_returns_false_when_item_not_on_board
+    adapter = Adapters::GithubProjects::IssueTracker.new(TEST_CONFIG.dup)
+    adapter.define_singleton_method(:project_items) { [] }
+    refute adapter.set_status(999, "cc-planning", repo: "o/r")
+  end
+
+  def test_set_status_returns_true_when_applied
+    adapter = Adapters::GithubProjects::IssueTracker.new(TEST_CONFIG.dup)
+    adapter.define_singleton_method(:project_items) do
+      [{ id: "PVTI_5", number: 5, repo: "o/r", status: "In progress", type: "ISSUE" }]
+    end
+    adapter.define_singleton_method(:status_field_id) { "FIELD_1" }
+    adapter.define_singleton_method(:status_option_id) { |_| "OPT_1" }
+    ran = []
+    adapter.define_singleton_method(:system) { |*cmd, **| ran << cmd }
+    assert adapter.set_status(5, "cc-planning", repo: "o/r")
+    assert_equal 1, ran.size, "expected the gh item-edit shell-out to run"
+  end
+
   def test_owner_type_detected_once_and_memoised
     adapter = adapter_with_graphql(typename: "Organization",
                                    items_nodes: [issue_node(number: 1, status: "Ready")])
