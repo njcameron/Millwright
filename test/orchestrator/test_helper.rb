@@ -49,7 +49,9 @@ class StubIssueTracker
 
   def count_active_workers = 0
 
-  def set_status(_number, _status, repo: nil); end
+  # Mirrors the real adapter: true when applied. Tests that need to simulate a
+  # board item that can't be found override this to return false.
+  def set_status(_number, _status, repo: nil) = true
 
   def fetch_issue_body(issue_number, repo: nil)
     @issue_bodies.fetch(issue_number, "")

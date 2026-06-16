@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.7.0 — 2026-06-16
+
+- Stop board-status transitions from silently failing. `Adapters::GithubProjects::IssueTracker#set_status` used to `return` quietly when the issue wasn't in the project-items snapshot, while `StatusTransitions` logged `"plan ready, moving to cc-planning"` (and released the dispatch lock) regardless — so a card that never actually moved was recorded as a success with nothing surfaced. `set_status` now returns whether it applied, and `StatusTransitions` routes a non-applied move (to `cc-planning` or `In review`) through `Context#error` (Slack, throttled) and leaves the lock held, instead of logging a false success. Same class of bug as the v0.2.0 "silent `gh` failure" fixes. (#3)
+
 ## v0.6.0 — 2026-06-13
 
 - Let the Claude Code coding-agent pin its model via `coding_agent.model` (passed as `--model`). The CLI's default model can be one this account lacks access to (e.g. `claude-fable-5`), which silently kills every spawned worker — and the watchdog's own doctor — on startup with a "model unavailable" error. Leaving it unset preserves the old default-model behavior.
