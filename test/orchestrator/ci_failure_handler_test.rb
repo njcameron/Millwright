@@ -121,6 +121,34 @@ class CiFailureHandlerTest < Minitest::Test
     refute @ctx.dispatch_lock.locked?("ci-99"), "stale lock should be reaped"
   end
 
+  # Regression: when a fix lands and CI goes green, the finished worker's lock
+  # must be reaped on the next tick rather than lingering until its TTL / the
+  # watchdog's stale-lock sweep (the success path never reached the failure
+  # branch where reaping used to happen).
+  def test_ci_success_reaps_finished_worker_lock
+    with_pr_in_review
+    @vcs.define_singleton_method(:latest_run_conclusion) { |_repo, _branch| "success" }
+
+    @ctx.dispatch_lock.lock("ci-99")
+    @ctx.dispatch_lock.record_pid("ci-99", 999_999) # dead pid — fix worker finished
+
+    @handler.call(2)
+    refute @ctx.dispatch_lock.locked?("ci-99"), "finished fix worker's lock should be reaped on green CI"
+  end
+
+  # A live fix worker's lock must survive a green-CI tick — reaping only
+  # releases locks whose owner pid has exited.
+  def test_ci_success_keeps_live_worker_lock
+    with_pr_in_review
+    @vcs.define_singleton_method(:latest_run_conclusion) { |_repo, _branch| "success" }
+
+    @ctx.dispatch_lock.lock("ci-99")
+    @ctx.dispatch_lock.record_pid("ci-99", Process.pid) # fix worker still running
+
+    @handler.call(2)
+    assert @ctx.dispatch_lock.locked?("ci-99"), "live fix worker's lock must not be reaped"
+  end
+
   def test_ci_success_resets_fix_count
     with_pr_in_review
     File.write(File.join(@ctx.state_dir, "ci_fix_count_99"), "1")
