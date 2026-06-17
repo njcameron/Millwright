@@ -106,6 +106,21 @@ class GithubProjectsIssueTrackerTest < Minitest::Test
     assert_equal 1, ran.size, "expected the gh item-edit shell-out to run"
   end
 
+  # ---- board_repos: distinct, compact repo list for the doctor preflight ----
+
+  def test_board_repos_returns_distinct_non_nil_repos
+    adapter = Adapters::GithubProjects::IssueTracker.new(TEST_CONFIG.dup)
+    adapter.define_singleton_method(:project_items) do
+      [
+        { number: 1, repo: "o/a", status: "Ready", type: "ISSUE" },
+        { number: 2, repo: "o/b", status: "Ready", type: "ISSUE" },
+        { number: 3, repo: "o/a", status: "In progress", type: "ISSUE" },
+        { number: 4, repo: nil,   status: "Ready", type: "DRAFT_ISSUE" }
+      ]
+    end
+    assert_equal ["o/a", "o/b"], adapter.board_repos
+  end
+
   def test_owner_type_detected_once_and_memoised
     adapter = adapter_with_graphql(typename: "Organization",
                                    items_nodes: [issue_node(number: 1, status: "Ready")])

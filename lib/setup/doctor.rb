@@ -3,6 +3,7 @@ require "open3"
 require "json"
 require "openssl"
 require_relative "../adapters/github_projects/app_token"
+require_relative "../adapters/github_projects/issue_tracker"
 require_relative "../adapters/slack/update_channel"
 
 module Setup
@@ -44,6 +45,7 @@ module Setup
       private_key
       gh_auth
       github_app_token
+      app_repo_access
       board_statuses
       slack_webhook
     ].freeze
@@ -244,6 +246,39 @@ module Setup
       end
     end
 
+    # Verifies the App installation can reach every repo that has a card on the
+    # board. The installation token issues fine even when the App was added to
+    # the account but not granted a particular repo — writes to that repo then
+    # 403, and workers silently fall back to posting as the owner account
+    # (which is what let njcameron/seogent PR #12 loop). Catching it here turns
+    # a silent runtime degradation into a red preflight before any dispatch.
+    def check_app_repo_access
+      return skip_no_config(:app_repo_access) unless config_ready?
+      return skip(:app_repo_access, "Skipped — fix the private key first.") unless private_key_usable?
+
+      board_repos = fetch_board_repos
+      return skip(:app_repo_access, "Skipped — could not read the board's cards (see board_statuses).") if board_repos.nil?
+      return pass(:app_repo_access, "No cards on the board yet — no repos to verify.") if board_repos.empty?
+
+      accessible = fetch_installation_repos
+      if accessible.nil?
+        return fail(:app_repo_access, "Could not list the App installation's repositories.",
+                    "Re-check the App token; GET /installation/repositories must be reachable with it.")
+      end
+
+      reachable = accessible.map(&:downcase)
+      missing = board_repos.reject { |r| reachable.include?(r.downcase) }
+
+      if missing.empty?
+        pass(:app_repo_access, "App installation can reach all #{board_repos.size} repo(s) with cards on the board.")
+      else
+        fail(:app_repo_access,
+             "App installation can't reach #{missing.size} of #{board_repos.size} board repo(s): #{missing.join(", ")}.",
+             "Grant the App access under Settings → Applications → <your App> → Configure → Repository access. " \
+             "Until then, workers fall back to posting as the owner account on those repos.")
+      end
+    end
+
     def check_board_statuses
       return skip_no_config(:board_statuses) unless config_ready?
 
@@ -339,6 +374,31 @@ module Setup
         return { names: field["options"].map { |o| o["name"] }, owner_type: owner_type } if field && field["options"]
       end
       nil
+    rescue StandardError
+      nil
+    end
+
+    # Distinct repos (nameWithOwner) of every card on the board, or nil if the
+    # board couldn't be read. Reuses IssueTracker so pagination and the
+    # user/org-owner fallback aren't duplicated here.
+    def fetch_board_repos
+      Adapters::GithubProjects::IssueTracker.new(@config).board_repos
+    rescue StandardError
+      nil
+    end
+
+    # Repos (full_name) the App installation can reach, or nil on failure.
+    # GET /installation/repositories requires the INSTALLATION token, not the
+    # user's gh auth, so we pass the freshly-issued App token via GH_TOKEN.
+    def fetch_installation_repos
+      token = generate_app_token
+      out, _err, st = Open3.capture3(
+        { "GH_TOKEN" => token },
+        "gh", "api", "/installation/repositories", "--paginate",
+        "--jq", ".repositories[].full_name"
+      )
+      return nil unless st.success?
+      out.split("\n").map(&:strip).reject(&:empty?)
     rescue StandardError
       nil
     end

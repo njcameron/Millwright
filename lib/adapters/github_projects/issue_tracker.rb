@@ -25,6 +25,14 @@ module Adapters
         project_items.select { |item| item[:status] == status && item[:type] == "ISSUE" }
       end
 
+      # Distinct repos (nameWithOwner) of every card on the board. The doctor
+      # preflight uses this to verify the App installation can actually reach
+      # the repos that have tickets — an unreachable one silently degrades the
+      # factory into posting as the owner account.
+      def board_repos
+        project_items.map { |item| item[:repo] }.compact.uniq
+      end
+
       def count_active_workers
         items = project_items
         planning = items.count { |i| i[:status] == @statuses["planning"] && i[:type] == "ISSUE" }

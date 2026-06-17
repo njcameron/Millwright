@@ -137,6 +137,60 @@ class DoctorTest < Minitest::Test
     assert_includes r.hint, "installation_id"
   end
 
+  # ---- app_repo_access (probes stubbed) ----
+
+  def app_repo_doctor(board:, accessible:)
+    doctor = build(config: good_config)
+    doctor.define_singleton_method(:private_key_usable?) { true }
+    doctor.define_singleton_method(:fetch_board_repos) { board }
+    doctor.define_singleton_method(:fetch_installation_repos) { accessible }
+    doctor
+  end
+
+  def test_app_repo_access_pass_when_all_reachable
+    r = app_repo_doctor(board: ["octocat/app", "octocat/site"],
+                        accessible: ["octocat/app", "octocat/site", "octocat/extra"]).check_app_repo_access
+    assert_equal :pass, r.status
+    assert_includes r.detail, "all 2"
+  end
+
+  def test_app_repo_access_fail_lists_unreachable
+    r = app_repo_doctor(board: ["octocat/app", "njcameron/seogent"],
+                        accessible: ["octocat/app"]).check_app_repo_access
+    assert_equal :fail, r.status
+    assert_includes r.detail, "njcameron/seogent"
+    assert_includes r.hint, "Repository access"
+  end
+
+  def test_app_repo_access_is_case_insensitive
+    r = app_repo_doctor(board: ["Octocat/App"], accessible: ["octocat/app"]).check_app_repo_access
+    assert_equal :pass, r.status
+  end
+
+  def test_app_repo_access_pass_when_board_empty
+    r = app_repo_doctor(board: [], accessible: ["octocat/app"]).check_app_repo_access
+    assert_equal :pass, r.status
+    assert_includes r.detail, "No cards"
+  end
+
+  def test_app_repo_access_skips_when_board_unreadable
+    r = app_repo_doctor(board: nil, accessible: ["octocat/app"]).check_app_repo_access
+    assert_equal :skip, r.status
+  end
+
+  def test_app_repo_access_fails_when_installation_unlistable
+    r = app_repo_doctor(board: ["octocat/app"], accessible: nil).check_app_repo_access
+    assert_equal :fail, r.status
+    assert_includes r.detail, "Could not list"
+  end
+
+  def test_app_repo_access_skips_without_private_key
+    doctor = build(config: good_config)
+    doctor.define_singleton_method(:private_key_usable?) { false }
+    r = doctor.check_app_repo_access
+    assert_equal :skip, r.status
+  end
+
   # ---- slack_webhook ----
 
   def test_slack_skipped_with_no_slack_flag
