@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.8.0 — 2026-06-17
+
+- Stop the PR/plan comment re-dispatch loop. `PrCommentHandler` and `PlanCommentHandler` only treated a comment as *addressed* when a reply's author equalled `factory_username` (the bot). But on repos where the GitHub App token is read-only, workers strip `GH_TOKEN` and post their replies as the **owner** account — so genuine worker replies never satisfied the dedup, and the orchestrator re-detected the same comment every tick, re-dispatching a worker and piling up duplicate live workers (observed on `njcameron/seogent` PR #12, which looped every ~2 min despite four real owner replies). Both handlers now treat the bot **and** the owner (`config["owner"]`) as factory-side. Review replies stay distinguishable from genuine top-level inline feedback by `in_reply_to_id`, so owner inline review comments are still picked up; owner top-level (issue) comments are treated as factory-side to avoid a self-loop on the worker's own reply. Third-party humans and other review bots (e.g. codex) remain genuine reviewers. (#7)
+
 ## v0.7.0 — 2026-06-16
 
 - Stop board-status transitions from silently failing. `Adapters::GithubProjects::IssueTracker#set_status` used to `return` quietly when the issue wasn't in the project-items snapshot, while `StatusTransitions` logged `"plan ready, moving to cc-planning"` (and released the dispatch lock) regardless — so a card that never actually moved was recorded as a success with nothing surfaced. `set_status` now returns whether it applied, and `StatusTransitions` routes a non-applied move (to `cc-planning` or `In review`) through `Context#error` (Slack, throttled) and leaves the lock held, instead of logging a false success. Same class of bug as the v0.2.0 "silent `gh` failure" fixes. (#3)

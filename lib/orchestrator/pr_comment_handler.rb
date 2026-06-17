@@ -63,8 +63,19 @@ class Orchestrator
       review_comments = @ctx.vcs.pr_review_comments(repo, pr_number)
       issue_comments = @ctx.vcs.pr_issue_comments(repo, pr_number)
 
+      # A comment is "addressed" by a reply from the factory — which is the bot
+      # OR the owner account. On repos where the GitHub App token is read-only,
+      # workers strip GH_TOKEN and post their replies as the owner, so an
+      # owner-authored reply is a genuine factory reply, not human feedback.
+      # Counting only factory_username here drove an infinite re-dispatch loop
+      # (issue #7 / PR #12): real owner replies never satisfied the dedup.
+      factory_authors = [factory_user, @ctx.config["owner"]].compact.to_set
+
+      # Review replies are distinguishable from genuine top-level feedback by
+      # in_reply_to_id, so owner *replies* count as addressing while owner
+      # top-level inline comments are still picked up as human feedback below.
       factory_replied_to = review_comments
-        .select { |c| c[:author] == factory_user && c[:in_reply_to_id] }
+        .select { |c| factory_authors.include?(c[:author]) && c[:in_reply_to_id] }
         .map { |c| c[:in_reply_to_id] }
         .to_set
 
@@ -76,13 +87,17 @@ class Orchestrator
           !c[:body].include?("@claude")
       end
 
+      # Top-level (issue) comments have no reply structure, so we can't tell an
+      # owner's worker-reply from owner feedback. Treat the owner as factory-side
+      # for both the candidate skip and the "replied-after" check; otherwise the
+      # worker's own owner-authored reply would re-trigger as a new candidate.
       unaddressed_issue = []
       issue_comments.each_with_index do |c, i|
-        next if c[:author] == factory_user
+        next if factory_authors.include?(c[:author])
         next if IGNORED_AUTHORS.include?(c[:author])
         next if c[:body].include?("@claude")
 
-        factory_replied_after = issue_comments[(i + 1)..].any? { |later| later[:author] == factory_user }
+        factory_replied_after = issue_comments[(i + 1)..].any? { |later| factory_authors.include?(later[:author]) }
         unaddressed_issue << c unless factory_replied_after
       end
 

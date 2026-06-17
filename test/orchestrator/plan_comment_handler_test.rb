@@ -52,6 +52,29 @@ class PlanCommentHandlerTest < Minitest::Test
     assert_equal "also handle the empty case", result[0][:body]
   end
 
+  # Regression (issue #7 / PR #12): the worker posts the revised plan as the
+  # OWNER account (here "testuser") when the App token is read-only, so an
+  # owner-authored revision must count as addressing the feedback — otherwise the
+  # plan handler re-dispatches the same feedback every tick.
+  def test_feedback_addressed_by_later_owner_comment
+    @vcs.issue_comments = [
+      { id: 1, author: "test-bot[bot]", body: "## Plan", type: :issue },
+      { id: 2, author: "human", body: "tweak this", type: :issue },
+      { id: 3, author: "testuser", body: "## Revised plan", type: :issue }
+    ]
+
+    assert_empty @handler.find_unaddressed_comments("user/repo", 530, "test-bot[bot]")
+  end
+
+  def test_owner_comments_are_never_unaddressed
+    @vcs.issue_comments = [
+      { id: 1, author: "test-bot[bot]", body: "## Plan", type: :issue },
+      { id: 2, author: "testuser", body: "## Revised plan", type: :issue }
+    ]
+
+    assert_empty @handler.find_unaddressed_comments("user/repo", 530, "test-bot[bot]")
+  end
+
   def test_bot_only_comments_are_never_unaddressed
     @vcs.issue_comments = [
       { id: 1, author: "test-bot[bot]", body: "## Plan", type: :issue }

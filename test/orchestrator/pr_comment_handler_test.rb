@@ -126,6 +126,55 @@ class PrCommentHandlerTest < Minitest::Test
     assert_equal ["Inline fix needed", "General feedback"], result.map { |c| c[:body] }
   end
 
+  # Regression (issue #7 / PR #12): on repos where the App token is read-only,
+  # workers strip GH_TOKEN and reply as the OWNER account (here "testuser"), not
+  # the bot. An owner-authored reply must count as addressing the comment, or the
+  # orchestrator re-dispatches it every tick (infinite loop + duplicate workers).
+  def test_review_comment_addressed_by_owner_reply
+    @vcs.review_comments = [
+      { id: 1, author: "chatgpt-codex-connector[bot]", body: "Preserve the unabridged SERP response", in_reply_to_id: nil, type: :review },
+      { id: 2, author: "testuser", body: "Done — re-pulled the full response.", in_reply_to_id: 1, type: :review }
+    ]
+
+    result = @handler.find_unaddressed_comments("user/repo", 10, "test-bot[bot]")
+    assert_empty result
+  end
+
+  def test_issue_comment_addressed_by_later_owner_comment
+    @vcs.issue_comments = [
+      { id: 10, author: "human", body: "Please change X", type: :issue },
+      { id: 11, author: "testuser", body: "Done, changed X", type: :issue }
+    ]
+
+    result = @handler.find_unaddressed_comments("user/repo", 10, "test-bot[bot]")
+    assert_empty result
+  end
+
+  # The owner is the factory's write identity, so its top-level (issue) comments
+  # are treated as factory-side — otherwise the worker's own owner-authored reply
+  # would re-trigger as a fresh candidate and loop.
+  def test_owner_issue_comments_are_never_unaddressed
+    @vcs.issue_comments = [
+      { id: 10, author: "testuser", body: "Some note from the worker", type: :issue }
+    ]
+
+    result = @handler.find_unaddressed_comments("user/repo", 10, "test-bot[bot]")
+    assert_empty result
+  end
+
+  # Owner *inline* review comments are genuine human feedback (distinguishable
+  # from worker replies by in_reply_to_id), so a top-level owner review comment
+  # must still be picked up.
+  def test_owner_top_level_review_comment_is_unaddressed
+    @vcs.review_comments = [
+      { id: 1, author: "testuser", body: "Inline nit to fix", in_reply_to_id: nil, type: :review }
+    ]
+
+    result = @handler.find_unaddressed_comments("user/repo", 10, "test-bot[bot]")
+    assert_equal 1, result.size
+    assert_equal "Inline nit to fix", result[0][:body]
+  end
+
   def test_cloudflare_bot_comments_are_ignored
     @vcs.review_comments = [
       { id: 1, author: "cloudflare-workers-and-pages", body: "Deployment successful!", in_reply_to_id: nil, type: :review }

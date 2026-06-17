@@ -59,21 +59,27 @@ class Orchestrator
     end
 
     # An issue comment is unaddressed when it's from someone other than the
-    # factory bot (and not an ignored bot or an @claude mention) and the factory
-    # bot hasn't commented after it. The plan itself is a factory comment, so
-    # reviewer feedback posted after the plan reads as unaddressed until the bot
-    # replies — both the WIP reply and the revised plan it posts count as a
-    # reply, so the feedback won't be re-picked-up once a worker has run.
+    # factory (and not an ignored bot or an @claude mention) and the factory
+    # hasn't commented after it. The plan itself is a factory comment, so
+    # reviewer feedback posted after the plan reads as unaddressed until the
+    # factory replies — both the WIP reply and the revised plan it posts count
+    # as a reply, so the feedback won't be re-picked-up once a worker has run.
+    #
+    # "Factory" is the bot OR the owner account: on repos where the App token is
+    # read-only the worker strips GH_TOKEN and posts the revised plan as the
+    # owner, so counting only factory_username here would re-dispatch the same
+    # feedback forever (issue #7 / PR #12 — same bug as PrCommentHandler).
     def find_unaddressed_comments(repo, issue_number, factory_user)
       comments = @ctx.vcs.issue_comments(repo, issue_number)
+      factory_authors = [factory_user, @ctx.config["owner"]].compact.to_set
 
       unaddressed = []
       comments.each_with_index do |c, i|
-        next if c[:author] == factory_user
+        next if factory_authors.include?(c[:author])
         next if IGNORED_AUTHORS.include?(c[:author])
         next if c[:body].include?("@claude")
 
-        factory_replied_after = comments[(i + 1)..].any? { |later| later[:author] == factory_user }
+        factory_replied_after = comments[(i + 1)..].any? { |later| factory_authors.include?(later[:author]) }
         unaddressed << c unless factory_replied_after
       end
       unaddressed
