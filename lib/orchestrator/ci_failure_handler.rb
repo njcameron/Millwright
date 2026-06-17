@@ -30,6 +30,14 @@ class Orchestrator
         pr_number = pr[:number]
         pr_branch = pr[:branch]
 
+        # Release a lingering lock whose fix worker has already finished —
+        # regardless of the resulting CI conclusion. A successful fix leaves CI
+        # green (or still re-running), and those paths return below without ever
+        # reaching the failure branch, so reaping here is what stops the lock
+        # from lingering until its TTL / the watchdog's stale-lock sweep. Only
+        # reaps once the owner pid has exited, so it never frees a live worker.
+        @ctx.dispatch_lock.reap_if_finished("ci-#{pr_number}")
+
         conclusion = @ctx.vcs.latest_run_conclusion(repo, pr_branch)
 
         if conclusion == "success"
@@ -39,10 +47,6 @@ class Orchestrator
 
         next unless conclusion == "failure"
 
-        # Release a lingering lock whose fix worker has already finished, so a
-        # subsequent CI failure can be retried (up to max_ci_fixes) without
-        # waiting out the lock's full TTL.
-        @ctx.dispatch_lock.reap_if_finished("ci-#{pr_number}")
         next if @ctx.dispatch_lock.locked?("ci-#{pr_number}")
 
         max_ci_fixes = @ctx.config["max_ci_fixes"] || DEFAULT_MAX_FIXES
