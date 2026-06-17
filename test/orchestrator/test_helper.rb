@@ -144,6 +144,12 @@ class RecordingUpdateChannel < StubUpdateChannel
 end
 
 module OrchestratorTestHelper
+  # A comment body stamped with the hidden factory marker, as a worker's reply
+  # (posted as the owner on a read-only-token repo) would carry it.
+  def marked(body)
+    Orchestrator::FactoryReply.stamp(body)
+  end
+
   def build_context(tmpdir, dry_run: false, update_channel: StubUpdateChannel.new)
     Orchestrator::Context.new(
       config: TEST_CONFIG.dup,

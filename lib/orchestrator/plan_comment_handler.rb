@@ -1,4 +1,5 @@
 require "set"
+require_relative "factory_reply"
 
 class Orchestrator
   # Scans issues parked in the "cc-planning" column for unaddressed reviewer
@@ -65,21 +66,23 @@ class Orchestrator
     # factory replies — both the WIP reply and the revised plan it posts count
     # as a reply, so the feedback won't be re-picked-up once a worker has run.
     #
-    # "Factory" is the bot OR the owner account: on repos where the App token is
-    # read-only the worker strips GH_TOKEN and posts the revised plan as the
-    # owner, so counting only factory_username here would re-dispatch the same
-    # feedback forever (issue #7 / PR #12 — same bug as PrCommentHandler).
+    # A factory comment is the bot OR — on repos where the App token is read-only
+    # — a worker posting the revised plan as the owner account. We CANNOT treat
+    # every owner comment as factory-side here: plan review is all issue comments
+    # and the reviewer is usually the owner, so doing so would silently ignore
+    # ALL their plan feedback. Instead the worker stamps its revised plan with a
+    # hidden marker, so FactoryReply.factory? recognises it regardless of author
+    # while the owner's unmarked feedback is still picked up (issue #7 / PR #12).
     def find_unaddressed_comments(repo, issue_number, factory_user)
       comments = @ctx.vcs.issue_comments(repo, issue_number)
-      factory_authors = [factory_user, @ctx.config["owner"]].compact.to_set
 
       unaddressed = []
       comments.each_with_index do |c, i|
-        next if factory_authors.include?(c[:author])
+        next if FactoryReply.factory?(c, factory_user)
         next if IGNORED_AUTHORS.include?(c[:author])
         next if c[:body].include?("@claude")
 
-        factory_replied_after = comments[(i + 1)..].any? { |later| factory_authors.include?(later[:author]) }
+        factory_replied_after = comments[(i + 1)..].any? { |later| FactoryReply.factory?(later, factory_user) }
         unaddressed << c unless factory_replied_after
       end
       unaddressed
@@ -88,7 +91,7 @@ class Orchestrator
     private
 
     def post_wip_reply(repo, issue_number)
-      @ctx.vcs.post_issue_comment(repo, issue_number, "🔧 Revising the plan based on your feedback — hang tight.")
+      @ctx.vcs.post_issue_comment(repo, issue_number, FactoryReply.stamp("🔧 Revising the plan based on your feedback — hang tight."))
     rescue => e
       @ctx.error(
         "Issue ##{issue_number}: failed to post plan WIP reply",
@@ -143,6 +146,9 @@ class Orchestrator
            current plan:
            `#{vcs.post_issue_comment(issue_number: issue_number, repo: repo, body_placeholder: "<your revised plan>")}`
            Open the comment with a short note of what changed in response to the feedback.
+           End the comment body with this exact line, on its own, so the orchestrator can tell
+           your revised plan apart from new reviewer feedback (it renders invisibly on GitHub):
+           #{FactoryReply::MARKER}
         4. Send a Slack notification that the plan has been updated using:
            #{@ctx.update_channel.prompts.send_message}
 

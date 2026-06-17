@@ -128,38 +128,64 @@ class PrCommentHandlerTest < Minitest::Test
 
   # Regression (issue #7 / PR #12): on repos where the App token is read-only,
   # workers strip GH_TOKEN and reply as the OWNER account (here "testuser"), not
-  # the bot. An owner-authored reply must count as addressing the comment, or the
+  # the bot. A worker stamps its reply with the factory marker, so an owner-
+  # authored *stamped* reply must count as addressing the comment, or the
   # orchestrator re-dispatches it every tick (infinite loop + duplicate workers).
-  def test_review_comment_addressed_by_owner_reply
+  def test_review_comment_addressed_by_marked_owner_reply
     @vcs.review_comments = [
       { id: 1, author: "chatgpt-codex-connector[bot]", body: "Preserve the unabridged SERP response", in_reply_to_id: nil, type: :review },
-      { id: 2, author: "testuser", body: "Done — re-pulled the full response.", in_reply_to_id: 1, type: :review }
+      { id: 2, author: "testuser", body: marked("Done — re-pulled the full response."), in_reply_to_id: 1, type: :review }
     ]
 
     result = @handler.find_unaddressed_comments("user/repo", 10, "test-bot[bot]")
     assert_empty result
   end
 
-  def test_issue_comment_addressed_by_later_owner_comment
+  def test_issue_comment_addressed_by_later_marked_owner_comment
     @vcs.issue_comments = [
       { id: 10, author: "human", body: "Please change X", type: :issue },
-      { id: 11, author: "testuser", body: "Done, changed X", type: :issue }
+      { id: 11, author: "testuser", body: marked("Done, changed X"), type: :issue }
     ]
 
     result = @handler.find_unaddressed_comments("user/repo", 10, "test-bot[bot]")
     assert_empty result
   end
 
-  # The owner is the factory's write identity, so its top-level (issue) comments
-  # are treated as factory-side — otherwise the worker's own owner-authored reply
-  # would re-trigger as a fresh candidate and loop.
-  def test_owner_issue_comments_are_never_unaddressed
+  # The owner is ALSO the human reviewer (Dispatcher requests it via
+  # `--reviewer`), so an UNMARKED top-level owner comment is genuine feedback —
+  # e.g. "please also update X" posted as a general PR comment — and must be
+  # picked up, not silently dropped as factory-side.
+  def test_unmarked_owner_issue_comment_is_unaddressed
     @vcs.issue_comments = [
-      { id: 10, author: "testuser", body: "Some note from the worker", type: :issue }
+      { id: 10, author: "testuser", body: "Please also update the changelog", type: :issue }
+    ]
+
+    result = @handler.find_unaddressed_comments("user/repo", 10, "test-bot[bot]")
+    assert_equal 1, result.size
+    assert_equal "Please also update the changelog", result[0][:body]
+  end
+
+  # A worker's own reply (posted as the owner, carrying the marker) must not
+  # re-trigger as a fresh candidate.
+  def test_marked_owner_issue_comment_is_not_unaddressed
+    @vcs.issue_comments = [
+      { id: 10, author: "testuser", body: marked("Status update from the worker"), type: :issue }
     ]
 
     result = @handler.find_unaddressed_comments("user/repo", 10, "test-bot[bot]")
     assert_empty result
+  end
+
+  # A later UNMARKED owner comment (the reviewer asking for more) must NOT mark
+  # earlier feedback as addressed — only a marked factory reply does.
+  def test_later_unmarked_owner_comment_does_not_address_feedback
+    @vcs.issue_comments = [
+      { id: 10, author: "chatgpt-codex-connector[bot]", body: "Consider edge case Y", type: :issue },
+      { id: 11, author: "testuser", body: "Agreed, and please also do Z", type: :issue }
+    ]
+
+    result = @handler.find_unaddressed_comments("user/repo", 10, "test-bot[bot]")
+    assert_equal ["Consider edge case Y", "Agreed, and please also do Z"], result.map { |c| c[:body] }
   end
 
   # Owner *inline* review comments are genuine human feedback (distinguishable

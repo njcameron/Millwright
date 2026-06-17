@@ -1,5 +1,6 @@
 require "open3"
 require "set"
+require_relative "factory_reply"
 
 class Orchestrator
   # Scans "In review" PRs for unaddressed comments and dispatches a Claude
@@ -63,41 +64,38 @@ class Orchestrator
       review_comments = @ctx.vcs.pr_review_comments(repo, pr_number)
       issue_comments = @ctx.vcs.pr_issue_comments(repo, pr_number)
 
-      # A comment is "addressed" by a reply from the factory — which is the bot
-      # OR the owner account. On repos where the GitHub App token is read-only,
-      # workers strip GH_TOKEN and post their replies as the owner, so an
-      # owner-authored reply is a genuine factory reply, not human feedback.
-      # Counting only factory_username here drove an infinite re-dispatch loop
-      # (issue #7 / PR #12): real owner replies never satisfied the dedup.
-      factory_authors = [factory_user, @ctx.config["owner"]].compact.to_set
-
-      # Review replies are distinguishable from genuine top-level feedback by
-      # in_reply_to_id, so owner *replies* count as addressing while owner
-      # top-level inline comments are still picked up as human feedback below.
+      # A comment is "addressed" by a reply from the factory. The factory is the
+      # bot OR — on repos where the GitHub App token is read-only — a worker that
+      # posts as the OWNER account. But the owner is also the human reviewer, so
+      # we can't treat owner authorship as factory-side: that would swallow the
+      # owner's own PR feedback. Instead, every factory reply carries a hidden
+      # marker, so FactoryReply.factory? recognises worker replies regardless of
+      # author while leaving the owner's unmarked feedback untouched. Counting
+      # only the bot drove an infinite re-dispatch loop (issue #7 / PR #12).
       factory_replied_to = review_comments
-        .select { |c| factory_authors.include?(c[:author]) && c[:in_reply_to_id] }
+        .select { |c| c[:in_reply_to_id] && FactoryReply.factory?(c, factory_user) }
         .map { |c| c[:in_reply_to_id] }
         .to_set
 
       unaddressed_review = review_comments.select do |c|
-        c[:author] != factory_user &&
+        !FactoryReply.factory?(c, factory_user) &&
           !IGNORED_AUTHORS.include?(c[:author]) &&
           c[:in_reply_to_id].nil? &&
           !factory_replied_to.include?(c[:id]) &&
           !c[:body].include?("@claude")
       end
 
-      # Top-level (issue) comments have no reply structure, so we can't tell an
-      # owner's worker-reply from owner feedback. Treat the owner as factory-side
-      # for both the candidate skip and the "replied-after" check; otherwise the
-      # worker's own owner-authored reply would re-trigger as a new candidate.
+      # Top-level (issue) comments have no reply structure, so the marker is the
+      # only way to tell a worker's owner-authored reply from owner feedback: an
+      # unmarked owner comment ("please also update X") is genuine feedback and
+      # must be picked up, while the worker's marked reply counts as addressing.
       unaddressed_issue = []
       issue_comments.each_with_index do |c, i|
-        next if factory_authors.include?(c[:author])
+        next if FactoryReply.factory?(c, factory_user)
         next if IGNORED_AUTHORS.include?(c[:author])
         next if c[:body].include?("@claude")
 
-        factory_replied_after = issue_comments[(i + 1)..].any? { |later| factory_authors.include?(later[:author]) }
+        factory_replied_after = issue_comments[(i + 1)..].any? { |later| FactoryReply.factory?(later, factory_user) }
         unaddressed_issue << c unless factory_replied_after
       end
 
@@ -107,7 +105,7 @@ class Orchestrator
     private
 
     def post_wip_replies(repo, pr_number, comments)
-      wip = "🔧 Working on this — hang tight."
+      wip = FactoryReply.stamp("🔧 Working on this — hang tight.")
 
       review_comments = comments.select { |c| c[:type] == :review }
       issue_comments = comments.select { |c| c[:type] == :issue }
@@ -187,6 +185,10 @@ class Orchestrator
           `#{vcs.reply_to_review_comment(repo: repo, pr_number: pr_number)}`
         - For general PR comments, reply using:
           `#{vcs.post_pr_comment(pr_number: pr_number, repo: repo)}`
+        - IMPORTANT: end EVERY reply or comment body you post with this exact
+          line, on its own, so the orchestrator can tell your replies apart from
+          new human feedback (it renders invisibly on GitHub):
+          #{FactoryReply::MARKER}
 
         After addressing all comments, run the linter before committing:
           `bundle exec rubocop -a` — then check for remaining violations with `bundle exec rubocop`.

@@ -53,23 +53,53 @@ class PlanCommentHandlerTest < Minitest::Test
   end
 
   # Regression (issue #7 / PR #12): the worker posts the revised plan as the
-  # OWNER account (here "testuser") when the App token is read-only, so an
-  # owner-authored revision must count as addressing the feedback — otherwise the
-  # plan handler re-dispatches the same feedback every tick.
-  def test_feedback_addressed_by_later_owner_comment
+  # OWNER account (here "testuser") when the App token is read-only. The worker
+  # stamps the revised plan with the factory marker, so an owner-authored
+  # *stamped* revision must count as addressing the feedback — otherwise the plan
+  # handler re-dispatches the same feedback every tick.
+  def test_feedback_addressed_by_later_marked_owner_comment
     @vcs.issue_comments = [
       { id: 1, author: "test-bot[bot]", body: "## Plan", type: :issue },
       { id: 2, author: "human", body: "tweak this", type: :issue },
-      { id: 3, author: "testuser", body: "## Revised plan", type: :issue }
+      { id: 3, author: "testuser", body: marked("## Revised plan"), type: :issue }
     ]
 
     assert_empty @handler.find_unaddressed_comments("user/repo", 530, "test-bot[bot]")
   end
 
-  def test_owner_comments_are_never_unaddressed
+  # The owner is usually the human reviewer, and plan review is all issue
+  # comments, so an UNMARKED owner comment is genuine plan feedback that must be
+  # picked up — it must NOT be silently swallowed as factory-side.
+  def test_unmarked_owner_feedback_is_unaddressed
     @vcs.issue_comments = [
       { id: 1, author: "test-bot[bot]", body: "## Plan", type: :issue },
-      { id: 2, author: "testuser", body: "## Revised plan", type: :issue }
+      { id: 2, author: "testuser", body: "Make it a standalone account", type: :issue }
+    ]
+
+    result = @handler.find_unaddressed_comments("user/repo", 530, "test-bot[bot]")
+    assert_equal 1, result.size
+    assert_equal "Make it a standalone account", result[0][:body]
+  end
+
+  # A later UNMARKED owner comment (the reviewer asking for more) must NOT mark
+  # earlier feedback as addressed — only a marked factory reply does.
+  def test_later_unmarked_owner_comment_does_not_address_feedback
+    @vcs.issue_comments = [
+      { id: 1, author: "test-bot[bot]", body: "## Plan", type: :issue },
+      { id: 2, author: "human", body: "tweak this", type: :issue },
+      { id: 3, author: "testuser", body: "and also handle empties", type: :issue }
+    ]
+
+    result = @handler.find_unaddressed_comments("user/repo", 530, "test-bot[bot]")
+    assert_equal ["tweak this", "and also handle empties"], result.map { |c| c[:body] }
+  end
+
+  # A worker's own revised plan (posted as the owner, carrying the marker) must
+  # not re-trigger as fresh feedback.
+  def test_marked_owner_revised_plan_is_not_unaddressed
+    @vcs.issue_comments = [
+      { id: 1, author: "test-bot[bot]", body: "## Plan", type: :issue },
+      { id: 2, author: "testuser", body: marked("## Revised plan"), type: :issue }
     ]
 
     assert_empty @handler.find_unaddressed_comments("user/repo", 530, "test-bot[bot]")
