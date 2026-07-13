@@ -121,6 +121,30 @@ class GithubProjectsIssueTrackerTest < Minitest::Test
     assert_equal ["o/a", "o/b"], adapter.board_repos
   end
 
+  # ---- extract_model_label: pure parse of `model:<name>` labels ----
+
+  def parse(names)
+    Adapters::GithubProjects::IssueTracker.new(TEST_CONFIG.dup).extract_model_label(names)
+  end
+
+  def test_extract_model_label_returns_trimmed_lowercased_name
+    assert_equal "fable", parse(["model:Fable"])
+    assert_equal "fable", parse(["  model: Fable  "])
+  end
+
+  def test_extract_model_label_nil_when_absent
+    assert_nil parse([])
+    assert_nil parse(["needs review", "bug"])
+  end
+
+  def test_extract_model_label_ignores_non_model_labels
+    assert_equal "opus", parse(["needs review", "model:opus", "enhancement"])
+  end
+
+  def test_extract_model_label_first_model_label_wins
+    assert_equal "fable", parse(["model:fable", "model:opus"])
+  end
+
   def test_owner_type_detected_once_and_memoised
     adapter = adapter_with_graphql(typename: "Organization",
                                    items_nodes: [issue_node(number: 1, status: "Ready")])

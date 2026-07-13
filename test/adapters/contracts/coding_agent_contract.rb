@@ -9,7 +9,14 @@ module CodingAgentContract
   end
 
   def test_contract_command_returns_non_empty_argv
-    argv = build_adapter.command(prompt_path: "/tmp/p")
+    argv = build_adapter.command(prompt_path: "/tmp/p", model: nil)
+    assert_kind_of Array, argv
+    refute_empty argv
+    argv.each { |a| assert_kind_of String, a }
+  end
+
+  def test_contract_command_accepts_model_override
+    argv = build_adapter.command(prompt_path: "/tmp/p", model: "some-model")
     assert_kind_of Array, argv
     refute_empty argv
     argv.each { |a| assert_kind_of String, a }

@@ -38,9 +38,13 @@ module Adapters
         @model = model.to_s.strip.empty? ? nil : model.to_s
       end
 
-      def command(prompt_path:)
+      def command(prompt_path:, model: nil)
+        # A per-dispatch model (e.g. from a `model:` label) wins over the
+        # configured default; nil falls back to @model, which may itself be nil
+        # (→ no --model, the CLI's own default).
+        chosen = model || @model
         argv = [@bin, "--permission-mode", "bypassPermissions"]
-        argv.concat(["--model", @model]) if @model
+        argv.concat(["--model", chosen]) if chosen
         argv.concat(remote_control_args)
         argv << "-p"
         argv

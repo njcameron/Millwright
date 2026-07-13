@@ -52,6 +52,16 @@ coding_agent:
   # default — but note an unavailable default model silently kills every worker
   # (and the doctor) on startup, so pinning a known-available model is safer.
   # model: claude-opus-4-8
+  # Per-issue model selection: add a `model:<name>` label to an issue and the
+  # worker dispatched for it runs with that model instead of the default above.
+  # `<name>` is a friendly alias resolved through this map (case-insensitive).
+  # An unknown/misspelled alias logs a warning + Slack notice and falls back to
+  # the default — it never silently spawns the wrong model.
+  model_labels:
+    fable:  claude-fable-5
+    opus:   claude-opus-4-8
+    sonnet: claude-sonnet-4-6
+    haiku:  claude-haiku-4-5-20251001
 
 # Optional: configure individual routines.
 routines:

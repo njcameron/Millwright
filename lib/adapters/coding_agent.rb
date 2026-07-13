@@ -7,7 +7,10 @@ module Adapters
   # live in the IssueTracker / VersionControl / UpdateChannel prompt fragments.
   class CodingAgent
     # Argv array for Process.spawn, given the path to a prompt file on disk.
-    def command(prompt_path:)
+    # `model:` optionally overrides the adapter's configured default model for
+    # this one invocation (e.g. a per-issue `model:` label); nil keeps the
+    # configured default.
+    def command(prompt_path:, model: nil)
       raise NotImplementedError
     end
 

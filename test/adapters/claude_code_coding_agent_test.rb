@@ -52,6 +52,27 @@ class ClaudeCodeCodingAgentTest < Minitest::Test
     refute_includes adapter.command(prompt_path: "/tmp/p"), "--model"
   end
 
+  def test_command_model_override_wins_over_configured_default
+    adapter = Adapters::ClaudeCode::CodingAgent.new("coding_agent" => { "model" => "claude-opus-4-8" })
+    argv = adapter.command(prompt_path: "/tmp/p", model: "claude-fable-5")
+    idx = argv.index("--model")
+    refute_nil idx, "expected --model in argv"
+    assert_equal "claude-fable-5", argv[idx + 1], "per-dispatch model should win over the config default"
+  end
+
+  def test_command_model_nil_falls_back_to_configured_default
+    adapter = Adapters::ClaudeCode::CodingAgent.new("coding_agent" => { "model" => "claude-opus-4-8" })
+    argv = adapter.command(prompt_path: "/tmp/p", model: nil)
+    idx = argv.index("--model")
+    refute_nil idx, "expected --model in argv"
+    assert_equal "claude-opus-4-8", argv[idx + 1], "nil override should fall back to the config default"
+  end
+
+  def test_command_no_configured_model_and_nil_override_omits_model
+    adapter = Adapters::ClaudeCode::CodingAgent.new({})
+    refute_includes adapter.command(prompt_path: "/tmp/p", model: nil), "--model"
+  end
+
   def test_env_overrides_clears_claude_code_session
     overrides = build_adapter.env_overrides
     assert_nil overrides["CLAUDECODE"]

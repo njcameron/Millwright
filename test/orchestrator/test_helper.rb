@@ -34,13 +34,15 @@ TEST_CONFIG = {
 
 # Board-state side of the legacy StubGithub.
 class StubIssueTracker
-  attr_accessor :items, :labels, :issue_bodies
+  attr_accessor :items, :labels, :issue_bodies, :model_labels
 
   def initialize
     @items = []
     @labels = {}
     # issue_number => body string
     @issue_bodies = {}
+    # [repo, number] => friendly model alias (e.g. "fable")
+    @model_labels = {}
   end
 
   def issues_by_status(status)
@@ -62,6 +64,10 @@ class StubIssueTracker
   end
 
   def mark_flagged_for_review(_repo, _number); end
+
+  def model_label(repo, number)
+    @model_labels[[repo, number]]
+  end
 
   def prompts
     @prompts ||= Adapters::GithubProjects::Prompts.new
