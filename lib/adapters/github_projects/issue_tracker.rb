@@ -78,6 +78,30 @@ module Adapters
         output.split("\n").any? { |l| l.strip.downcase == "needs review" }
       end
 
+      # Friendly model alias from a `model:<name>` label (e.g. "fable"), or nil.
+      # Shells out exactly like flag_for_review?, then delegates parsing to the
+      # pure extract_model_label so the parse is unit-testable without `gh`.
+      def model_label(repo, issue_number)
+        output, status = Open3.capture2(
+          "gh", "issue", "view", issue_number.to_s, "-R", repo,
+          "--json", "labels", "--jq", ".labels[].name"
+        )
+        return nil unless status.success?
+        extract_model_label(output.split("\n"))
+      end
+
+      # Pure parser: given label names, return the trimmed, lowercased `<name>`
+      # from the FIRST `model:*` label, or nil if none match. First-wins keeps
+      # selection deterministic when a human accidentally adds two.
+      def extract_model_label(names)
+        names.each do |name|
+          stripped = name.to_s.strip
+          next unless stripped.downcase.start_with?("model:")
+          return stripped.split(":", 2).last.strip.downcase
+        end
+        nil
+      end
+
       def mark_flagged_for_review(repo, issue_number)
         # Only used by the worker via the prompt fragment (Step 5).
         # Ruby-side callers don't currently invoke this; raising keeps the

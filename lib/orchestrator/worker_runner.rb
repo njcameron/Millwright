@@ -16,11 +16,11 @@ class Orchestrator
       @logs_dir = logs_dir
     end
 
-    def spawn_worker(prompt:, chdir:, log_file:)
+    def spawn_worker(prompt:, chdir:, log_file:, model: nil)
       prompt_path = "#{log_file}.prompt"
       File.write(prompt_path, prompt)
 
-      argv = @coding_agent.command(prompt_path: prompt_path)
+      argv = @coding_agent.command(prompt_path: prompt_path, model: model)
       env = @vcs.worker_env.merge(@coding_agent.env_overrides)
       env = env.merge(@update_channel.worker_env) if @update_channel
 

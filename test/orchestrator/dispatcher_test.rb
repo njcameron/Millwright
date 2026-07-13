@@ -85,6 +85,43 @@ class DispatcherTest < Minitest::Test
     end
   end
 
+  # --- resolve_model: per-issue model selection from a `model:` label ---
+
+  def with_model_labels(map, ctx: @ctx)
+    ctx.config["coding_agent"] = { "model_labels" => map }
+  end
+
+  def test_resolve_model_maps_known_alias_to_model_id
+    with_model_labels({ "fable" => "claude-fable-5" })
+    @ctx.issue_tracker.model_labels[["user/repo", 42]] = "fable"
+    assert_equal "claude-fable-5", @dispatcher.send(:resolve_model, "user/repo", 42)
+  end
+
+  def test_resolve_model_returns_nil_when_no_label
+    with_model_labels({ "fable" => "claude-fable-5" })
+    assert_nil @dispatcher.send(:resolve_model, "user/repo", 42)
+  end
+
+  def test_resolve_model_unknown_alias_falls_back_to_default_and_notifies
+    recorder = RecordingUpdateChannel.new
+    ctx = build_context(@tmpdir, update_channel: recorder)
+    with_model_labels({ "fable" => "claude-fable-5" }, ctx: ctx)
+    ctx.issue_tracker.model_labels[["user/repo", 42]] = "gpt5"
+    dispatcher = Orchestrator::Dispatcher.new(ctx)
+
+    assert_nil dispatcher.send(:resolve_model, "user/repo", 42),
+               "unknown alias must fall back to the default (nil), not spawn the wrong model"
+    assert_equal 1, recorder.errors.size, "unknown alias should surface a Slack notice"
+    assert_includes recorder.errors.first[:message], "gpt5", "notice should name the offending alias"
+  end
+
+  def test_resolve_model_nil_when_no_model_labels_configured
+    # No coding_agent.model_labels block at all → any label is "unknown" and we
+    # fall back to the default without crashing.
+    @ctx.issue_tracker.model_labels[["user/repo", 42]] = "fable"
+    assert_nil @dispatcher.send(:resolve_model, "user/repo", 42)
+  end
+
   # --- fetch_attachments ---
 
   def fetch_attachments(repo, issue_number)

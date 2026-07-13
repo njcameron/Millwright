@@ -42,7 +42,9 @@ class Orchestrator
         return
       end
 
-      @ctx.log "Dispatching issue ##{number}: #{title} (#{repo}) [mode: #{mode}]"
+      model = resolve_model(repo, number)
+      model_note = model ? " [model: #{model}]" : ""
+      @ctx.log "Dispatching issue ##{number}: #{title} (#{repo}) [mode: #{mode}]#{model_note}"
       @ctx.dispatch_lock.lock(number)
       @ctx.update_channel.issue_picked_up(number, title, repo, mode)
       @ctx.issue_tracker.set_status(number, @ctx.statuses["building"], repo: repo)
@@ -53,7 +55,7 @@ class Orchestrator
       prompt = build_prompt(number, repo, worktree_dir, branch, attachments,
                             planning_approved: planning_approved)
 
-      pid = @ctx.worker_runner.spawn_worker(prompt: prompt, chdir: repo_dir, log_file: log_file)
+      pid = @ctx.worker_runner.spawn_worker(prompt: prompt, chdir: repo_dir, log_file: log_file, model: model)
       @ctx.log "Spawned claude for issue ##{number} (pid: #{pid})"
     end
 
@@ -88,6 +90,25 @@ class Orchestrator
     end
 
     private
+
+    # Resolve a per-issue model override from a `model:<name>` label. Returns a
+    # real model id (via coding_agent.model_labels), or nil to fall back to the
+    # coding-agent adapter's configured default. An unknown alias is surfaced
+    # (log + Slack) and falls back to the default rather than silently spawning
+    # the wrong model or hard-failing the dispatch.
+    def resolve_model(repo, number)
+      label = @ctx.issue_tracker.model_label(repo, number)
+      return nil unless label
+
+      model = @ctx.config.dig("coding_agent", "model_labels", label)
+      return model if model
+
+      @ctx.error(
+        "Issue ##{number}: unknown model label `model:#{label}` — falling back to the default model",
+        key: "unknown_model_label_#{label}"
+      )
+      nil
+    end
 
     def fresh_task_steps(issue_number, repo)
       vcs = @ctx.vcs.prompts

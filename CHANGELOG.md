@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.10.0 — 2026-07-13
+
+- Let a human pick the worker model per issue via a `model:<alias>` label on the card. The dispatcher (`resolve_model`) reads the label through the issue tracker (`IssueTracker#model_label`), maps the friendly alias to a real model id via `coding_agent.model_labels` in config, and passes it to the Claude Code adapter as a one-off `--model` override that wins over the configured `coding_agent.model` default. An unknown alias is surfaced (log + throttled Slack) and falls back to the default model rather than silently spawning the wrong model or hard-failing the dispatch. `IssueTracker#model_label` defaults to `nil` (no override) so trackers with no concept of model labels keep working unchanged. Only the issue-dispatch path adopts per-issue selection for now; the plan/PR/CI/watchdog worker paths stay on the configured default. (#11)
+
 ## v0.9.0 — 2026-06-17
 
 - Add a `bin/doctor` preflight check (`app_repo_access`) that catches the misconfiguration behind the v0.8.0 re-dispatch loop *before* it bites. The GitHub App installation token issues successfully even when the App was added to the account but never granted access to a particular repo — writes to that repo then 403 (`Resource not accessible by integration`) and workers silently fall back to posting as the **owner** account. Doctor now enumerates every repo that has a card on the board (`IssueTracker#board_repos`) and cross-checks it against the repos the installation can actually reach (`GET /installation/repositories`, called with the App token). Any board repo the App can't reach is a hard **fail** naming the repo, with a hint to grant access under the App's *Repository access* settings — so a degraded install turns red at preflight instead of looping at runtime. The v0.8.0 factory-reply marker remains the runtime safety net for the legitimate fallback. (#7)

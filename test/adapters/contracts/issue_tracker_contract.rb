@@ -8,7 +8,7 @@ module IssueTrackerContract
   def test_contract_responds_to_required_methods
     adapter = build_adapter
     %i[issues_by_status count_active_workers set_status
-       fetch_issue_body flag_for_review? mark_flagged_for_review prompts].each do |m|
+       fetch_issue_body flag_for_review? mark_flagged_for_review model_label prompts].each do |m|
       assert_respond_to adapter, m, "must implement ##{m}"
     end
   end
