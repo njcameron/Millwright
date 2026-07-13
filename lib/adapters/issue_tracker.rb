@@ -41,8 +41,13 @@ module Adapters
     # The friendly model alias a human selected for this issue (e.g. "fable"),
     # or nil if none. Generalises GitHub's `model:<name>` label; the dispatcher
     # maps the alias to a real model id via config. Trimmed + lowercased.
+    #
+    # OPTIONAL: unlike the methods above, this defaults to nil rather than
+    # raising, so trackers with no concept of per-issue model labels keep
+    # working unchanged. The dispatcher treats nil as "no override — use the
+    # coding-agent's configured default model". Override to support labels.
     def model_label(repo, issue_number)
-      raise NotImplementedError
+      nil
     end
 
     # Returns the Prompts object for this adapter (mark_plan_ready, etc.).
