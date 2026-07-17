@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.11.0 — 2026-07-17
+
+- Stop spawned workers inheriting `ANTHROPIC_API_KEY`, which outranks the claude.ai subscription login in the Claude CLI's credential precedence. When the key was present in the orchestrator env it leaked into every worker, so each dispatch billed pay-as-you-go API credit instead of the subscription — and once that credit balance drained, every worker (and the doctor) died on startup with `Credit balance is too low`. Because the death is silent (a 76-byte worker log), the cards stayed stranded in *In progress*, held all `max_workers` slots via `count_active_workers`, and deadlocked new dispatch (observed on `njcameron/rh-app` issues 615/620/621). `CodingAgent#env_overrides` now clears `ANTHROPIC_API_KEY` alongside the `CLAUDE_CODE_*` vars, so workers fall through to the subscription OAuth login. Regression test asserts the key is explicitly unset (present with a `nil` value, not merely absent). Graceful detection/comms/back-off for spend-limit stalls is tracked separately in #15. (#15)
+
 ## v0.10.0 — 2026-07-13
 
 - Let a human pick the worker model per issue via a `model:<alias>` label on the card. The dispatcher (`resolve_model`) reads the label through the issue tracker (`IssueTracker#model_label`), maps the friendly alias to a real model id via `coding_agent.model_labels` in config, and passes it to the Claude Code adapter as a one-off `--model` override that wins over the configured `coding_agent.model` default. An unknown alias is surfaced (log + throttled Slack) and falls back to the default model rather than silently spawning the wrong model or hard-failing the dispatch. `IssueTracker#model_label` defaults to `nil` (no override) so trackers with no concept of model labels keep working unchanged. Only the issue-dispatch path adopts per-issue selection for now; the plan/PR/CI/watchdog worker paths stay on the configured default. (#11)

@@ -80,6 +80,16 @@ class ClaudeCodeCodingAgentTest < Minitest::Test
     assert_nil overrides["CLAUDE_CODE_SESSION_ACCESS_TOKEN"]
   end
 
+  # Regression: ANTHROPIC_API_KEY leaking into workers overrides the claude.ai
+  # subscription login and bills API credit; a drained balance then kills every
+  # worker on startup ("Credit balance is too low"). It must be explicitly
+  # cleared (present in the hash with a nil value), not merely absent.
+  def test_env_overrides_clears_anthropic_api_key
+    overrides = build_adapter.env_overrides
+    assert overrides.key?("ANTHROPIC_API_KEY"), "ANTHROPIC_API_KEY must be explicitly unset for workers"
+    assert_nil overrides["ANTHROPIC_API_KEY"]
+  end
+
   def test_stdin_mode_is_prompt_file
     assert_equal :prompt_file, build_adapter.stdin_mode
   end
