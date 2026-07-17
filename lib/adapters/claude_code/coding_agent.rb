@@ -54,7 +54,14 @@ module Adapters
         {
           "CLAUDECODE" => nil,
           "CLAUDE_CODE_ENTRYPOINT" => nil,
-          "CLAUDE_CODE_SESSION_ACCESS_TOKEN" => nil
+          "CLAUDE_CODE_SESSION_ACCESS_TOKEN" => nil,
+          # ANTHROPIC_API_KEY outranks the claude.ai subscription login in the
+          # CLI's credential precedence, so if it leaks into a worker every
+          # dispatch bills API credit instead of the subscription. When that
+          # credit balance runs dry, every worker (and the doctor) dies on
+          # startup with "Credit balance is too low". Clearing it here makes
+          # workers fall through to the subscription OAuth login.
+          "ANTHROPIC_API_KEY" => nil
         }
       end
 
