@@ -47,6 +47,23 @@ class Orchestrator
       true
     end
 
+    # Reaps every finished issue-dispatch lock — one whose worker process has
+    # exited — so a cleanly-finished worker's lock is released within a tick
+    # instead of ageing the full TTL into a watchdog stale-lock alarm. Only
+    # issue locks are considered: their key is a bare number (dispatch_<n>.lock),
+    # whereas pr-/ci-/plan-/doctor locks are reaped by their own handlers. Only
+    # locks with a recorded pid are touched, so a legacy ownerless lock is never
+    # freed out from under a still-running worker. Yields each reaped key.
+    def reap_finished_issue_locks
+      Dir.glob(File.join(@state_dir, "dispatch_*.lock")).each do |lock|
+        key = File.basename(lock).sub(/\Adispatch_/, "").sub(/\.lock\z/, "")
+        next unless key.match?(/\A\d+\z/)      # issue locks only
+        next unless File.exist?(pid_path(key)) # skip ownerless (pre-fix) locks
+
+        yield key if reap_if_finished(key) && block_given?
+      end
+    end
+
     private
 
     def owner_pid(key)

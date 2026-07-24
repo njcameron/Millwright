@@ -31,6 +31,12 @@ class Orchestrator
 
     # Always-run checks (regardless of available slots)
     @status_transitions.call
+    # Release any issue-dispatch lock whose worker has already finished but that
+    # StatusTransitions didn't clear (card already left "In progress"), so it
+    # doesn't age into a benign 45m watchdog stale-lock alarm.
+    @ctx.dispatch_lock.reap_finished_issue_locks do |key|
+      @ctx.log "Reaped finished dispatch lock for issue ##{key}"
+    end
     @pr_comment_handler.call([1, available_slots].max)
     @plan_comment_handler.call([1, available_slots].max)
     @ci_failure_handler.call([1, available_slots].max)
