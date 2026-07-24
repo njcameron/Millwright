@@ -85,6 +85,60 @@ class DispatcherTest < Minitest::Test
     end
   end
 
+  # --- dispatch: records the worker pid on the issue lock (issue #17) ---
+
+  # Minimal worker_runner that records the spawn and hands back a known pid,
+  # so the test can assert the dispatch lock captured it.
+  class StubWorkerRunner
+    attr_reader :spawned
+
+    def initialize(logs_dir, pid)
+      @logs_dir = logs_dir
+      @pid = pid
+      @spawned = []
+    end
+
+    def daily_log_path(filename)
+      FileUtils.mkdir_p(@logs_dir)
+      File.join(@logs_dir, filename)
+    end
+
+    def spawn_worker(**kwargs)
+      @spawned << kwargs
+      @pid
+    end
+  end
+
+  def test_dispatch_records_worker_pid_on_issue_lock
+    # Regression (issue #17): the issue-dispatch lock used to record no pid, so a
+    # cleanly-finished worker left it to age the full TTL into a Doctor stale-lock
+    # alarm. Dispatch must now record the pid so reap_finished_issue_locks can
+    # release it the moment the worker exits.
+    runner = StubWorkerRunner.new(File.join(@tmpdir, "logs"), 999_999) # pid dead
+    ctx = build_context(@tmpdir)
+    ctx.instance_variable_set(:@worker_runner, runner)
+    dispatcher = Orchestrator::Dispatcher.new(ctx)
+
+    # dispatcher.rb resolves repo_dir as ../../../<repo_name> from lib/orchestrator,
+    # i.e. a sibling of the repo checkout. Mirror that and create a uniquely named
+    # one so the existence guard passes without touching any real sibling checkout.
+    repo_name = "millwright-dispatch-test-#{Process.pid}"
+    repo_dir = File.expand_path("../#{repo_name}", File.expand_path("../..", __dir__))
+    FileUtils.mkdir_p(repo_dir)
+
+    dispatcher.dispatch(number: 678, title: "some work", repo: "user/#{repo_name}", status: "Ready")
+
+    assert_equal 1, runner.spawned.size, "worker should have been spawned"
+    assert ctx.dispatch_lock.locked?(678), "issue should be locked after dispatch"
+    # A dead-pid lock is reaped; an ownerless lock is skipped by the sweep. So a
+    # successful reap proves dispatch recorded the (dead) pid on the lock.
+    reaped = []
+    ctx.dispatch_lock.reap_finished_issue_locks { |key| reaped << key }
+    assert_equal ["678"], reaped, "recorded pid (dead) must let the sweep reap the lock"
+  ensure
+    FileUtils.rm_rf(repo_dir) if repo_dir
+  end
+
   # --- resolve_model: per-issue model selection from a `model:` label ---
 
   def with_model_labels(map, ctx: @ctx)

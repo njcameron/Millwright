@@ -56,6 +56,12 @@ class Orchestrator
                             planning_approved: planning_approved)
 
       pid = @ctx.worker_runner.spawn_worker(prompt: prompt, chdir: repo_dir, log_file: log_file, model: model)
+      # Record the owner so a cleanly-finished worker's lock is reaped the moment
+      # its process exits (via reap_finished_issue_locks) instead of ageing the
+      # full TTL into a watchdog stale-lock alarm. StatusTransitions still clears
+      # it on the normal board move; this covers the paths where that move has
+      # already happened by the time the lock would otherwise be released.
+      @ctx.dispatch_lock.record_pid(number, pid)
       @ctx.log "Spawned claude for issue ##{number} (pid: #{pid})"
     end
 
